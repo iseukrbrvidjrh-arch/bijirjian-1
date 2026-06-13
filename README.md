@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Second Brain OS
 
 Local First AI Knowledge Operating System.
@@ -52,3 +53,7 @@ service traits and SQLite connection initialization.
 It intentionally contains no business tables, AI provider implementation,
 prompt engine, knowledge engine, feedback logic, processing jobs, versioning,
 workspace logic or Obsidian export implementation.
+=======
+# bijirjian-1
+笔记整理应用
+>>>>>>> 687b2f6074a4314726a5f43d4210e179e7311130

@@ -5,7 +5,9 @@ pub enum AppError {
     Database(rusqlite::Error),
     Io(std::io::Error),
     Migration(String),
+    State(String),
     Tauri(tauri::Error),
+    Validation(String),
 }
 
 impl fmt::Display for AppError {
@@ -14,7 +16,9 @@ impl fmt::Display for AppError {
             Self::Database(error) => write!(formatter, "database error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
             Self::Migration(message) => write!(formatter, "migration error: {message}"),
+            Self::State(message) => write!(formatter, "application state error: {message}"),
             Self::Tauri(error) => write!(formatter, "Tauri error: {error}"),
+            Self::Validation(message) => write!(formatter, "validation error: {message}"),
         }
     }
 }
@@ -36,5 +40,14 @@ impl From<std::io::Error> for AppError {
 impl From<tauri::Error> for AppError {
     fn from(error: tauri::Error) -> Self {
         Self::Tauri(error)
+    }
+}
+
+impl serde::Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }

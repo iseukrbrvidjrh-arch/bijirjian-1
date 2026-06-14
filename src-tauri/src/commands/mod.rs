@@ -1,1 +1,3 @@
-// Tauri IPC commands will be registered when application use cases exist.
+pub(crate) mod capture;
+mod dto;
+pub(crate) mod inbox;

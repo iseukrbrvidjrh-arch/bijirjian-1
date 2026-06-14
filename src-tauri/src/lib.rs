@@ -20,7 +20,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::capture::capture_text_source,
-            commands::inbox::list_inbox_sources
+            commands::inbox::list_inbox_sources,
+            commands::inbox::mark_source_processed,
+            commands::inbox::mark_source_dismissed
         ])
         .setup(|app| {
             let database = infrastructure::database::initialize(app.handle())?;

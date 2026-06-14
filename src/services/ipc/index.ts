@@ -1,1 +1,6 @@
-export { captureTextSource, listInboxSources } from "./source-client";
+export {
+  captureTextSource,
+  listInboxSources,
+  markSourceDismissed,
+  markSourceProcessed,
+} from "./source-client";

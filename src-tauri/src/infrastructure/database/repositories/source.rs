@@ -1,7 +1,7 @@
 use std::io;
 
 use chrono::{SecondsFormat, Utc};
-use rusqlite::{params, types::Type};
+use rusqlite::{params, types::Type, OptionalExtension, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -124,6 +124,100 @@ impl SourceRepository for SqliteSourceRepository<'_> {
             Ok(sources)
         })
     }
+
+    fn mark_source_processed(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Source, AppError> {
+        self.transition_source(workspace_id, source_id, InboxStatus::Processed)
+    }
+
+    fn mark_source_dismissed(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Source, AppError> {
+        self.transition_source(workspace_id, source_id, InboxStatus::Dismissed)
+    }
+}
+
+impl SqliteSourceRepository<'_> {
+    fn transition_source(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+        target_status: InboxStatus,
+    ) -> Result<Source, AppError> {
+        self.database.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let now = current_timestamp();
+
+            let changed_rows = match target_status {
+                InboxStatus::Processed => transaction.execute(
+                    "
+                    UPDATE sources
+                    SET inbox_status = ?1,
+                        processed_at = ?2,
+                        updated_at = ?2
+                    WHERE id = ?3
+                      AND workspace_id = ?4
+                      AND inbox_status = ?5
+                      AND deleted_at IS NULL
+                    ",
+                    params![
+                        target_status.as_str(),
+                        now,
+                        source_id,
+                        workspace_id,
+                        InboxStatus::Unprocessed.as_str(),
+                    ],
+                )?,
+                InboxStatus::Dismissed => transaction.execute(
+                    "
+                    UPDATE sources
+                    SET inbox_status = ?1,
+                        updated_at = ?2
+                    WHERE id = ?3
+                      AND workspace_id = ?4
+                      AND inbox_status = ?5
+                      AND deleted_at IS NULL
+                    ",
+                    params![
+                        target_status.as_str(),
+                        now,
+                        source_id,
+                        workspace_id,
+                        InboxStatus::Unprocessed.as_str(),
+                    ],
+                )?,
+                _ => {
+                    return Err(AppError::Validation(format!(
+                        "unsupported source lifecycle target: {target_status}"
+                    )));
+                }
+            };
+
+            if changed_rows == 0 {
+                return Err(source_transition_error(
+                    &transaction,
+                    workspace_id,
+                    source_id,
+                    target_status,
+                )?);
+            }
+
+            let source = find_source(&transaction, workspace_id, source_id)?.ok_or_else(|| {
+                AppError::State(format!(
+                    "source {source_id} was updated but could not be loaded"
+                ))
+            })?;
+
+            transaction.commit()?;
+            Ok(source)
+        })
+    }
 }
 
 fn map_source(row: &rusqlite::Row<'_>) -> rusqlite::Result<Source> {
@@ -145,6 +239,70 @@ fn map_source(row: &rusqlite::Row<'_>) -> rusqlite::Result<Source> {
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
         deleted_at: row.get(11)?,
+    })
+}
+
+fn find_source(
+    transaction: &Transaction<'_>,
+    workspace_id: &str,
+    source_id: &str,
+) -> Result<Option<Source>, AppError> {
+    transaction
+        .query_row(
+            "
+            SELECT
+                id,
+                workspace_id,
+                source_type,
+                raw_content,
+                content_hash,
+                metadata_json,
+                inbox_status,
+                captured_at,
+                processed_at,
+                created_at,
+                updated_at,
+                deleted_at
+            FROM sources
+            WHERE id = ?1
+              AND workspace_id = ?2
+            ",
+            params![source_id, workspace_id],
+            map_source,
+        )
+        .optional()
+        .map_err(AppError::from)
+}
+
+fn source_transition_error(
+    transaction: &Transaction<'_>,
+    workspace_id: &str,
+    source_id: &str,
+    target_status: InboxStatus,
+) -> Result<AppError, AppError> {
+    let current_state = transaction
+        .query_row(
+            "
+            SELECT inbox_status, deleted_at
+            FROM sources
+            WHERE id = ?1
+              AND workspace_id = ?2
+            ",
+            params![source_id, workspace_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()?;
+
+    Ok(match current_state {
+        None => AppError::NotFound(format!(
+            "source {source_id} does not exist in the current workspace"
+        )),
+        Some((_, Some(_))) => AppError::Conflict(format!(
+            "source {source_id} is deleted and cannot be marked as {target_status}"
+        )),
+        Some((status, None)) => AppError::Conflict(format!(
+            "source {source_id} has status {status} and cannot be marked as {target_status}"
+        )),
     })
 }
 

@@ -7,6 +7,8 @@ import {
 import {
   captureTextSource,
   listInboxSources,
+  markSourceDismissed,
+  markSourceProcessed,
 } from "@/services/ipc";
 
 const DEFAULT_INBOX_LIMIT = 50;
@@ -30,6 +32,32 @@ export function useCaptureTextSource() {
 
   return useMutation({
     mutationFn: captureTextSource,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceQueryKeys.inbox(),
+      });
+    },
+  });
+}
+
+export function useMarkSourceProcessed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: markSourceProcessed,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceQueryKeys.inbox(),
+      });
+    },
+  });
+}
+
+export function useMarkSourceDismissed() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: markSourceDismissed,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: sourceQueryKeys.inbox(),

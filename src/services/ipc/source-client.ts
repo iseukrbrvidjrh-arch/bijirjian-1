@@ -14,6 +14,18 @@ export async function listInboxSources(
   return invokeCommand<SourceDto[]>("list_inbox_sources", { limit });
 }
 
+export async function markSourceProcessed(
+  sourceId: string,
+): Promise<SourceDto> {
+  return invokeCommand<SourceDto>("mark_source_processed", { sourceId });
+}
+
+export async function markSourceDismissed(
+  sourceId: string,
+): Promise<SourceDto> {
+  return invokeCommand<SourceDto>("mark_source_dismissed", { sourceId });
+}
+
 async function invokeCommand<T>(
   command: string,
   args?: Record<string, unknown>,

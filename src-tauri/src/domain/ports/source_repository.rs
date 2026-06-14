@@ -10,4 +10,16 @@ pub trait SourceRepository: Send + Sync {
 
     fn list_inbox_sources(&self, workspace_id: &str, limit: usize)
         -> Result<Vec<Source>, AppError>;
+
+    fn mark_source_processed(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Source, AppError>;
+
+    fn mark_source_dismissed(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Source, AppError>;
 }

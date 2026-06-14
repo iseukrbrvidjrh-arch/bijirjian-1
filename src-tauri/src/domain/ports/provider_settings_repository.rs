@@ -1,5 +1,5 @@
 use crate::{
-    domain::{ProviderSettings, ProviderType},
+    domain::{ProviderModel, ProviderSettings, ProviderType},
     error::AppError,
 };
 
@@ -9,5 +9,6 @@ pub trait ProviderSettingsRepository: Send + Sync {
     fn save_provider_settings(
         &self,
         provider_type: ProviderType,
+        default_model: ProviderModel,
     ) -> Result<ProviderSettings, AppError>;
 }

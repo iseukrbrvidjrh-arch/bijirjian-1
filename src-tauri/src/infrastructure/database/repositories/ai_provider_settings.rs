@@ -4,7 +4,7 @@ use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, types::Type, OptionalExtension, TransactionBehavior};
 
 use crate::{
-    domain::{ports::ProviderSettingsRepository, ProviderSettings, ProviderType},
+    domain::{ports::ProviderSettingsRepository, ProviderModel, ProviderSettings, ProviderType},
     error::AppError,
     infrastructure::database::Database,
 };
@@ -31,6 +31,7 @@ impl ProviderSettingsRepository for SqliteProviderSettingsRepository<'_> {
     fn save_provider_settings(
         &self,
         provider_type: ProviderType,
+        default_model: ProviderModel,
     ) -> Result<ProviderSettings, AppError> {
         self.database.with_connection(|connection| {
             let transaction =
@@ -42,15 +43,22 @@ impl ProviderSettingsRepository for SqliteProviderSettingsRepository<'_> {
                 INSERT INTO ai_provider_settings (
                     id,
                     provider_type,
+                    default_model,
                     created_at,
                     updated_at
                 )
-                VALUES (?1, ?2, ?3, ?3)
+                VALUES (?1, ?2, ?3, ?4, ?4)
                 ON CONFLICT(id) DO UPDATE SET
                     provider_type = excluded.provider_type,
+                    default_model = excluded.default_model,
                     updated_at = excluded.updated_at
                 ",
-                params![SETTINGS_ID, provider_type.as_str(), now],
+                params![
+                    SETTINGS_ID,
+                    provider_type.as_str(),
+                    default_model.as_str(),
+                    now
+                ],
             )?;
 
             let settings = find_provider_settings(&transaction)?.ok_or_else(|| {
@@ -71,26 +79,29 @@ fn find_provider_settings(
     connection
         .query_row(
             "
-            SELECT provider_type, created_at, updated_at
+            SELECT provider_type, default_model, created_at, updated_at
             FROM ai_provider_settings
             WHERE id = ?1
             ",
             [SETTINGS_ID],
             |row| {
                 let provider_type: String = row.get(0)?;
+                let default_model: String = row.get(1)?;
 
                 Ok(ProviderSettings {
                     provider_type: ProviderType::try_from(provider_type.as_str())
-                        .map_err(|message| invalid_provider_type(0, message))?,
-                    created_at: row.get(1)?,
-                    updated_at: row.get(2)?,
+                        .map_err(|message| invalid_setting_value(0, message))?,
+                    default_model: ProviderModel::try_from(default_model.as_str())
+                        .map_err(|message| invalid_setting_value(1, message))?,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
                 })
             },
         )
         .optional()
 }
 
-fn invalid_provider_type(column: usize, message: String) -> rusqlite::Error {
+fn invalid_setting_value(column: usize, message: String) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         column,
         Type::Text,

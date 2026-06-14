@@ -23,6 +23,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0002_ai_provider_settings.sql"),
         checksum: "24a4e48ed1d6a06acb7a8eed98616a8fad8ed8fb6ea812a31fb5510f2726c4c5",
     },
+    Migration {
+        version: 3,
+        name: "ai_provider_default_model",
+        sql: include_str!("../../../migrations/0003_ai_provider_default_model.sql"),
+        checksum: "ed97ee70c9663154021a9685be87e3afdfaf4be611571eaca20836540b2fd1c4",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -183,7 +189,7 @@ mod tests {
 
     use rusqlite::{Connection, OptionalExtension};
 
-    use super::{checksum, run, run_migrations, Migration};
+    use super::{checksum, run, run_migrations, Migration, MIGRATIONS};
     use crate::error::AppError;
 
     #[test]
@@ -201,7 +207,7 @@ mod tests {
             table_exists(&connection, "ai_provider_settings"),
             Some("ai_provider_settings".into())
         );
-        assert_eq!(migration_count(&connection), 2);
+        assert_eq!(migration_count(&connection), 3);
     }
 
     #[test]
@@ -211,7 +217,7 @@ mod tests {
         run(&mut connection).expect("run initial migration");
         run(&mut connection).expect("run migrations again");
 
-        assert_eq!(migration_count(&connection), 2);
+        assert_eq!(migration_count(&connection), 3);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -221,6 +227,43 @@ mod tests {
             table_exists(&connection, "ai_provider_settings"),
             Some("ai_provider_settings".into())
         );
+    }
+
+    #[test]
+    fn upgrades_existing_provider_settings_with_the_default_model() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..2]).expect("run through migration 2");
+        connection
+            .execute(
+                "
+                INSERT INTO ai_provider_settings (
+                    id,
+                    provider_type,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    'default',
+                    'deepseek',
+                    '2026-06-14T00:00:00.000Z',
+                    '2026-06-14T00:00:00.000Z'
+                )
+                ",
+                [],
+            )
+            .expect("seed existing provider settings");
+
+        run(&mut connection).expect("apply default model migration");
+
+        let default_model = connection
+            .query_row(
+                "SELECT default_model FROM ai_provider_settings WHERE id = 'default'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("read migrated default model");
+        assert_eq!(default_model, "deepseek-v4-flash");
+        assert_eq!(migration_count(&connection), 3);
     }
 
     #[test]
@@ -262,7 +305,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (3, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (4, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
                 ",
                 [],
             )
@@ -346,7 +389,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 2);
+        assert_eq!(migration_count(&connection), 3);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())

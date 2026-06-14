@@ -194,9 +194,7 @@ mod tests {
                 }
             }
 
-            request_tx
-                .send(String::from_utf8_lossy(&request).into_owned())
-                .expect("send captured request");
+            let _ = request_tx.send(String::from_utf8_lossy(&request).into_owned());
 
             let reason = match status {
                 200 => "OK",

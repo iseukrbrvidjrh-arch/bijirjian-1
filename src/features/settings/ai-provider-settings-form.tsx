@@ -9,12 +9,14 @@ import {
   useTestAiProviderConnection,
 } from "@/features/settings/ai-provider-queries";
 import type {
+  AiProviderModel,
   AiProviderType,
   SaveAiProviderSettingsInput,
 } from "@/types/ai-provider";
 
 interface ProviderFormValues {
   providerType: AiProviderType;
+  defaultModel: AiProviderModel;
   apiKey: string;
 }
 
@@ -33,6 +35,7 @@ export function AiProviderSettingsForm() {
   } = useForm<ProviderFormValues>({
     defaultValues: {
       providerType: "deepseek",
+      defaultModel: "deepseek-v4-flash",
       apiKey: "",
     },
   });
@@ -40,6 +43,7 @@ export function AiProviderSettingsForm() {
   useEffect(() => {
     if (settingsQuery.data) {
       setValue("providerType", settingsQuery.data.providerType);
+      setValue("defaultModel", settingsQuery.data.defaultModel);
     }
   }, [setValue, settingsQuery.data]);
 
@@ -50,6 +54,7 @@ export function AiProviderSettingsForm() {
 
     const input: SaveAiProviderSettingsInput = {
       providerType: values.providerType,
+      defaultModel: values.defaultModel,
       apiKey: values.apiKey.trim() || undefined,
     };
 
@@ -116,6 +121,25 @@ export function AiProviderSettingsForm() {
           >
             <option value="deepseek">DeepSeek</option>
           </select>
+        </div>
+
+        <div>
+          <label className="text-sm font-medium" htmlFor="default-model">
+            Default model
+          </label>
+          <select
+            id="default-model"
+            className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            {...register("defaultModel")}
+          >
+            <option value="deepseek-v4-flash">
+              DeepSeek V4 Flash
+            </option>
+            <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Used as the default model for future AI workflows.
+          </p>
         </div>
 
         <div>

@@ -12,10 +12,12 @@ export function getAiProviderSettings() {
 
 export function saveAiProviderSettings({
   providerType,
+  defaultModel,
   apiKey,
 }: SaveAiProviderSettingsInput) {
   return invoke<AiProviderSettingsDto>("save_ai_provider_settings", {
     providerType,
+    defaultModel,
     apiKey,
   });
 }

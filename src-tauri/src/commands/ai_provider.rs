@@ -6,7 +6,7 @@ use crate::{
         AiProviderService, AiProviderSettingsSummary, DefaultAiProviderService,
         ProviderConnectionResult,
     },
-    domain::ProviderType,
+    domain::{ProviderModel, ProviderType},
     error::AppError,
     infrastructure::database::repositories::SqliteProviderSettingsRepository,
     state::AppState,
@@ -16,6 +16,7 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct AiProviderSettingsDto {
     provider_type: String,
+    default_model: String,
     has_api_key: bool,
     updated_at: String,
 }
@@ -24,6 +25,7 @@ impl From<AiProviderSettingsSummary> for AiProviderSettingsDto {
     fn from(settings: AiProviderSettingsSummary) -> Self {
         Self {
             provider_type: settings.provider_type.to_string(),
+            default_model: settings.default_model.to_string(),
             has_api_key: settings.has_api_key,
             updated_at: settings.updated_at,
         }
@@ -62,17 +64,20 @@ pub fn get_ai_provider_settings(
 #[tauri::command]
 pub fn save_ai_provider_settings(
     provider_type: String,
+    default_model: String,
     api_key: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<AiProviderSettingsDto, AppError> {
     let provider_type =
         ProviderType::try_from(provider_type.as_str()).map_err(AppError::Validation)?;
+    let default_model =
+        ProviderModel::try_from(default_model.as_str()).map_err(AppError::Validation)?;
     let repository = SqliteProviderSettingsRepository::new(&state.database);
     let service =
         DefaultAiProviderService::new(&repository, &state.credential_store, &state.provider_router);
 
     service
-        .save_settings(provider_type, api_key)
+        .save_settings(provider_type, default_model, api_key)
         .map(Into::into)
 }
 
@@ -90,18 +95,23 @@ pub fn test_ai_provider_connection(
 #[cfg(test)]
 mod tests {
     use super::AiProviderSettingsDto;
-    use crate::{application::services::AiProviderSettingsSummary, domain::ProviderType};
+    use crate::{
+        application::services::AiProviderSettingsSummary,
+        domain::{ProviderModel, ProviderType},
+    };
 
     #[test]
     fn settings_dto_never_contains_an_api_key() {
         let dto = AiProviderSettingsDto::from(AiProviderSettingsSummary {
             provider_type: ProviderType::DeepSeek,
+            default_model: ProviderModel::DeepSeekV4Flash,
             has_api_key: true,
             updated_at: "2026-06-14T00:00:00.000Z".to_owned(),
         });
         let json = serde_json::to_value(dto).expect("serialize settings DTO");
 
         assert_eq!(json["providerType"], "deepseek");
+        assert_eq!(json["defaultModel"], "deepseek-v4-flash");
         assert_eq!(json["hasApiKey"], true);
         assert!(json.get("apiKey").is_none());
     }

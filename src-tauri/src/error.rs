@@ -2,7 +2,9 @@ use std::{error::Error, fmt};
 
 #[derive(Debug)]
 pub enum AppError {
+    AiProvider(String),
     Conflict(String),
+    Credential(String),
     Database(rusqlite::Error),
     Io(std::io::Error),
     Migration(String),
@@ -15,7 +17,9 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AiProvider(message) => write!(formatter, "AI provider error: {message}"),
             Self::Conflict(message) => write!(formatter, "conflict: {message}"),
+            Self::Credential(message) => write!(formatter, "credential store error: {message}"),
             Self::Database(error) => write!(formatter, "database error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
             Self::Migration(message) => write!(formatter, "migration error: {message}"),

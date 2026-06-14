@@ -10,12 +10,20 @@ struct Migration {
     checksum: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    sql: include_str!("../../../migrations/0001_initial_schema.sql"),
-    checksum: "058bcd44071d7681dd014440b1467dac863b4f9c2a6225183163a91b53224c3e",
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: include_str!("../../../migrations/0001_initial_schema.sql"),
+        checksum: "058bcd44071d7681dd014440b1467dac863b4f9c2a6225183163a91b53224c3e",
+    },
+    Migration {
+        version: 2,
+        name: "ai_provider_settings",
+        sql: include_str!("../../../migrations/0002_ai_provider_settings.sql"),
+        checksum: "24a4e48ed1d6a06acb7a8eed98616a8fad8ed8fb6ea812a31fb5510f2726c4c5",
+    },
+];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
     run_migrations(connection, MIGRATIONS)
@@ -189,7 +197,11 @@ mod tests {
             Some("workspaces".into())
         );
         assert_eq!(table_exists(&connection, "sources"), Some("sources".into()));
-        assert_eq!(migration_count(&connection), 1);
+        assert_eq!(
+            table_exists(&connection, "ai_provider_settings"),
+            Some("ai_provider_settings".into())
+        );
+        assert_eq!(migration_count(&connection), 2);
     }
 
     #[test]
@@ -199,12 +211,16 @@ mod tests {
         run(&mut connection).expect("run initial migration");
         run(&mut connection).expect("run migrations again");
 
-        assert_eq!(migration_count(&connection), 1);
+        assert_eq!(migration_count(&connection), 2);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
         );
         assert_eq!(table_exists(&connection, "sources"), Some("sources".into()));
+        assert_eq!(
+            table_exists(&connection, "ai_provider_settings"),
+            Some("ai_provider_settings".into())
+        );
     }
 
     #[test]
@@ -246,7 +262,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (2, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (3, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
                 ",
                 [],
             )
@@ -330,12 +346,16 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 1);
+        assert_eq!(migration_count(&connection), 2);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
         );
         assert_eq!(table_exists(&connection, "sources"), Some("sources".into()));
+        assert_eq!(
+            table_exists(&connection, "ai_provider_settings"),
+            Some("ai_provider_settings".into())
+        );
 
         drop(connection);
         let _ = fs::remove_file(&database_path);

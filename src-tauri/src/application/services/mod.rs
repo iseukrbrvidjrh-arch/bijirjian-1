@@ -1,3 +1,4 @@
+mod ai_provider;
 mod capture;
 mod export;
 mod feedback;
@@ -5,6 +6,10 @@ mod inbox;
 mod knowledge;
 mod prompt;
 
+pub use ai_provider::{
+    AiProviderService, AiProviderSettingsSummary, DefaultAiProviderService,
+    ProviderConnectionResult,
+};
 pub use capture::{CaptureService, DefaultCaptureService};
 pub use export::ExportService;
 pub use feedback::FeedbackService;

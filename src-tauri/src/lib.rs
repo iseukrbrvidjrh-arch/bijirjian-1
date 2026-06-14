@@ -19,6 +19,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            commands::ai_provider::get_ai_provider_settings,
+            commands::ai_provider::save_ai_provider_settings,
+            commands::ai_provider::test_ai_provider_connection,
             commands::capture::capture_text_source,
             commands::inbox::list_inbox_sources,
             commands::inbox::mark_source_processed,
@@ -27,7 +30,9 @@ pub fn run() {
         .setup(|app| {
             let database = infrastructure::database::initialize(app.handle())?;
             SqliteWorkspaceRepository::new(&database).ensure_default_workspace()?;
-            app.manage(AppState::new(database));
+            let credential_store = infrastructure::keyring::SystemCredentialStore::new()?;
+            let provider_router = infrastructure::ai::DefaultProviderRouter::new()?;
+            app.manage(AppState::new(database, credential_store, provider_router));
             Ok(())
         })
         .run(tauri::generate_context!())

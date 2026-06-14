@@ -1,1 +1,4 @@
-// AI provider adapters will be added after the provider contracts are finalized.
+mod deepseek;
+mod router;
+
+pub use router::DefaultProviderRouter;

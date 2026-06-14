@@ -376,6 +376,17 @@ mod tests {
         ) -> Result<(), AppError> {
             Ok(())
         }
+
+        fn generate_text(
+            &self,
+            _provider_type: ProviderType,
+            _model: ProviderModel,
+            _api_key: &str,
+            _system_prompt: &str,
+            _user_content: &str,
+        ) -> Result<String, AppError> {
+            Ok("unused".to_owned())
+        }
     }
 
     fn test_database() -> Database {

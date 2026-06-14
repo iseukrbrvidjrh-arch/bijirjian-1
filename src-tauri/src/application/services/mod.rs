@@ -5,6 +5,7 @@ mod feedback;
 mod inbox;
 mod knowledge;
 mod prompt;
+mod summary;
 
 pub use ai_provider::{
     AiProviderService, AiProviderSettingsSummary, DefaultAiProviderService,
@@ -16,3 +17,4 @@ pub use feedback::FeedbackService;
 pub use inbox::{DefaultInboxService, InboxService};
 pub use knowledge::KnowledgeService;
 pub use prompt::{DefaultPromptDetails, DefaultPromptService, PromptService};
+pub use summary::{DefaultSummaryService, SourceSummary, SummaryService};

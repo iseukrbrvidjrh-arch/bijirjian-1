@@ -125,6 +125,39 @@ impl SourceRepository for SqliteSourceRepository<'_> {
         })
     }
 
+    fn find_source(&self, workspace_id: &str, source_id: &str) -> Result<Source, AppError> {
+        self.database.with_connection(|connection| {
+            if let Some(source) =
+                find_source_in_connection(connection, workspace_id, source_id, false)?
+            {
+                return Ok(source);
+            }
+
+            let source_state = connection
+                .query_row(
+                    "
+                    SELECT workspace_id, deleted_at
+                    FROM sources
+                    WHERE id = ?1
+                    ",
+                    [source_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                )
+                .optional()?;
+
+            match source_state {
+                Some((source_workspace_id, Some(_))) if source_workspace_id == workspace_id => {
+                    Err(AppError::Conflict(format!(
+                        "source {source_id} is deleted and cannot be summarized"
+                    )))
+                }
+                _ => Err(AppError::NotFound(format!(
+                    "source {source_id} does not exist in the current workspace"
+                ))),
+            }
+        })
+    }
+
     fn mark_source_processed(
         &self,
         workspace_id: &str,
@@ -208,11 +241,12 @@ impl SqliteSourceRepository<'_> {
                 )?);
             }
 
-            let source = find_source(&transaction, workspace_id, source_id)?.ok_or_else(|| {
-                AppError::State(format!(
-                    "source {source_id} was updated but could not be loaded"
-                ))
-            })?;
+            let source = find_source_in_connection(&transaction, workspace_id, source_id, true)?
+                .ok_or_else(|| {
+                    AppError::State(format!(
+                        "source {source_id} was updated but could not be loaded"
+                    ))
+                })?;
 
             transaction.commit()?;
             Ok(source)
@@ -242,12 +276,13 @@ fn map_source(row: &rusqlite::Row<'_>) -> rusqlite::Result<Source> {
     })
 }
 
-fn find_source(
-    transaction: &Transaction<'_>,
+fn find_source_in_connection(
+    connection: &rusqlite::Connection,
     workspace_id: &str,
     source_id: &str,
+    include_deleted: bool,
 ) -> Result<Option<Source>, AppError> {
-    transaction
+    connection
         .query_row(
             "
             SELECT
@@ -266,8 +301,9 @@ fn find_source(
             FROM sources
             WHERE id = ?1
               AND workspace_id = ?2
+              AND (?3 = 1 OR deleted_at IS NULL)
             ",
-            params![source_id, workspace_id],
+            params![source_id, workspace_id, include_deleted],
             map_source,
         )
         .optional()

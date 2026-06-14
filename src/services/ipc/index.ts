@@ -15,3 +15,4 @@ export {
   listPromptVersions,
   setActivePromptVersion,
 } from "./prompt-client";
+export { summarizeSource } from "./summary-client";

@@ -19,3 +19,7 @@ export {
   getLatestSourceSummary,
   summarizeSource,
 } from "./summary-client";
+export {
+  createKnowledgeNode,
+  listKnowledgeNodes,
+} from "./knowledge-client";

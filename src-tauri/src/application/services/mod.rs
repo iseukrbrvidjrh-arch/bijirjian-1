@@ -15,6 +15,6 @@ pub use capture::{CaptureService, DefaultCaptureService};
 pub use export::ExportService;
 pub use feedback::FeedbackService;
 pub use inbox::{DefaultInboxService, InboxService};
-pub use knowledge::KnowledgeService;
+pub use knowledge::{DefaultKnowledgeService, KnowledgeService};
 pub use prompt::{DefaultPromptDetails, DefaultPromptService, PromptService};
 pub use summary::{DefaultSummaryService, SourceSummary, SummaryService};

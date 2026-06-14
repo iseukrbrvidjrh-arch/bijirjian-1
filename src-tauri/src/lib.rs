@@ -26,6 +26,8 @@ pub fn run() {
             commands::inbox::list_inbox_sources,
             commands::inbox::mark_source_processed,
             commands::inbox::mark_source_dismissed,
+            commands::knowledge::create_knowledge_node,
+            commands::knowledge::list_knowledge_nodes,
             commands::prompt::get_default_prompt,
             commands::prompt::list_prompt_versions,
             commands::prompt::create_prompt_version,

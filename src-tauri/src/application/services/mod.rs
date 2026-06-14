@@ -15,4 +15,4 @@ pub use export::ExportService;
 pub use feedback::FeedbackService;
 pub use inbox::{DefaultInboxService, InboxService};
 pub use knowledge::KnowledgeService;
-pub use prompt::PromptService;
+pub use prompt::{DefaultPromptDetails, DefaultPromptService, PromptService};

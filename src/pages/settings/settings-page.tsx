@@ -1,4 +1,5 @@
 import { AiProviderSettingsForm } from "@/features/settings/ai-provider-settings-form";
+import { PromptSettingsForm } from "@/features/settings/prompt-settings-form";
 
 export function SettingsPage() {
   return (
@@ -10,8 +11,9 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 space-y-6">
         <AiProviderSettingsForm />
+        <PromptSettingsForm />
       </div>
     </section>
   );

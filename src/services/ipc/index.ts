@@ -9,3 +9,9 @@ export {
   markSourceDismissed,
   markSourceProcessed,
 } from "./source-client";
+export {
+  createPromptVersion,
+  getDefaultPrompt,
+  listPromptVersions,
+  setActivePromptVersion,
+} from "./prompt-client";

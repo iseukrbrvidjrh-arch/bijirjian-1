@@ -25,7 +25,11 @@ pub fn run() {
             commands::capture::capture_text_source,
             commands::inbox::list_inbox_sources,
             commands::inbox::mark_source_processed,
-            commands::inbox::mark_source_dismissed
+            commands::inbox::mark_source_dismissed,
+            commands::prompt::get_default_prompt,
+            commands::prompt::list_prompt_versions,
+            commands::prompt::create_prompt_version,
+            commands::prompt::set_active_prompt_version
         ])
         .setup(|app| {
             let database = infrastructure::database::initialize(app.handle())?;

@@ -29,6 +29,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0003_ai_provider_default_model.sql"),
         checksum: "ed97ee70c9663154021a9685be87e3afdfaf4be611571eaca20836540b2fd1c4",
     },
+    Migration {
+        version: 4,
+        name: "prompt_registry",
+        sql: include_str!("../../../migrations/0004_prompt_registry.sql"),
+        checksum: "07ad4f5c133637e9c1c705e3676b870c73b63a543459fd61d87a72ee5cdee9ef",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -207,7 +213,12 @@ mod tests {
             table_exists(&connection, "ai_provider_settings"),
             Some("ai_provider_settings".into())
         );
-        assert_eq!(migration_count(&connection), 3);
+        assert_eq!(table_exists(&connection, "prompts"), Some("prompts".into()));
+        assert_eq!(
+            table_exists(&connection, "prompt_versions"),
+            Some("prompt_versions".into())
+        );
+        assert_eq!(migration_count(&connection), 4);
     }
 
     #[test]
@@ -217,7 +228,7 @@ mod tests {
         run(&mut connection).expect("run initial migration");
         run(&mut connection).expect("run migrations again");
 
-        assert_eq!(migration_count(&connection), 3);
+        assert_eq!(migration_count(&connection), 4);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -227,6 +238,66 @@ mod tests {
             table_exists(&connection, "ai_provider_settings"),
             Some("ai_provider_settings".into())
         );
+        assert_eq!(table_exists(&connection, "prompts"), Some("prompts".into()));
+        assert_eq!(
+            table_exists(&connection, "prompt_versions"),
+            Some("prompt_versions".into())
+        );
+    }
+
+    #[test]
+    fn initializes_the_default_source_summary_prompt() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+
+        run(&mut connection).expect("run migrations");
+
+        let (prompt_key, active_version_id, version, prompt_content) = connection
+            .query_row(
+                "
+                SELECT
+                    prompt.prompt_key,
+                    prompt.active_version_id,
+                    version.version,
+                    version.prompt_content
+                FROM prompts AS prompt
+                JOIN prompt_versions AS version
+                  ON version.id = prompt.active_version_id
+                 AND version.prompt_id = prompt.id
+                WHERE prompt.prompt_key = 'source_summary'
+                ",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .expect("read default prompt");
+
+        assert_eq!(prompt_key, "source_summary");
+        assert_eq!(active_version_id, "builtin-source-summary-v1");
+        assert_eq!(version, 1);
+        assert!(!prompt_content.trim().is_empty());
+    }
+
+    #[test]
+    fn applies_the_prompt_registry_to_an_existing_version_three_database() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..3]).expect("run through migration 3");
+        assert_eq!(table_exists(&connection, "prompts"), None);
+        assert_eq!(table_exists(&connection, "prompt_versions"), None);
+
+        run(&mut connection).expect("apply prompt registry migration");
+
+        assert_eq!(table_exists(&connection, "prompts"), Some("prompts".into()));
+        assert_eq!(
+            table_exists(&connection, "prompt_versions"),
+            Some("prompt_versions".into())
+        );
+        assert_eq!(migration_count(&connection), 4);
     }
 
     #[test]
@@ -263,7 +334,7 @@ mod tests {
             )
             .expect("read migrated default model");
         assert_eq!(default_model, "deepseek-v4-flash");
-        assert_eq!(migration_count(&connection), 3);
+        assert_eq!(migration_count(&connection), 4);
     }
 
     #[test]
@@ -305,7 +376,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (4, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (5, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
                 ",
                 [],
             )
@@ -389,7 +460,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 3);
+        assert_eq!(migration_count(&connection), 4);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -398,6 +469,11 @@ mod tests {
         assert_eq!(
             table_exists(&connection, "ai_provider_settings"),
             Some("ai_provider_settings".into())
+        );
+        assert_eq!(table_exists(&connection, "prompts"), Some("prompts".into()));
+        assert_eq!(
+            table_exists(&connection, "prompt_versions"),
+            Some("prompt_versions".into())
         );
 
         drop(connection);

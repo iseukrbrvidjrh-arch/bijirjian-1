@@ -20,6 +20,7 @@ export {
   summarizeSource,
 } from "./summary-client";
 export {
+  createKnowledgeDraftFromLatestSummary,
   createKnowledgeNode,
   listKnowledgeNodes,
 } from "./knowledge-client";

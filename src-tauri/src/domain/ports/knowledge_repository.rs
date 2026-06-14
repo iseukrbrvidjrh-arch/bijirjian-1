@@ -12,5 +12,14 @@ pub trait KnowledgeRepository: Send + Sync {
         knowledge_type: KnowledgeType,
     ) -> Result<KnowledgeNode, AppError>;
 
+    fn insert_proposed_node(
+        &self,
+        workspace_id: &str,
+        ai_run_id: &str,
+        title: &str,
+        content: &str,
+        knowledge_type: KnowledgeType,
+    ) -> Result<KnowledgeNode, AppError>;
+
     fn list_nodes(&self, workspace_id: &str, limit: usize) -> Result<Vec<KnowledgeNode>, AppError>;
 }

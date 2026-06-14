@@ -47,6 +47,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0006_knowledge_nodes.sql"),
         checksum: "794ccab3ea170259c9ae431ee6a0f60d1959be4b2ba79bc995729230e6830ac1",
     },
+    Migration {
+        version: 7,
+        name: "knowledge_node_ai_run_origin",
+        sql: include_str!("../../../migrations/0007_knowledge_node_ai_run_origin.sql"),
+        checksum: "c5fa9ff84dda0e85d6b964c086c9fb3d1c54687ea2e544af7553b6f2d285ddf4",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -235,7 +241,11 @@ mod tests {
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
         );
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(
+            column_exists(&connection, "knowledge_nodes", "ai_run_id"),
+            Some("ai_run_id".into())
+        );
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -264,7 +274,93 @@ mod tests {
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
         );
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(
+            column_exists(&connection, "knowledge_nodes", "ai_run_id"),
+            Some("ai_run_id".into())
+        );
+        assert_eq!(migration_count(&connection), 7);
+    }
+
+    #[test]
+    fn applies_ai_run_origin_to_an_existing_version_six_database() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..6]).expect("run through migration 6");
+        connection
+            .execute(
+                "
+                INSERT INTO workspaces (
+                    id,
+                    name,
+                    description,
+                    created_at,
+                    updated_at,
+                    archived_at
+                )
+                VALUES (
+                    'migration-workspace',
+                    'Migration',
+                    NULL,
+                    '2026-06-14T00:00:00.000Z',
+                    '2026-06-14T00:00:00.000Z',
+                    NULL
+                )
+                ",
+                [],
+            )
+            .expect("seed workspace before migration 7");
+        connection
+            .execute(
+                "
+                INSERT INTO knowledge_nodes (
+                    id,
+                    workspace_id,
+                    title,
+                    content,
+                    knowledge_type,
+                    status,
+                    created_at,
+                    updated_at,
+                    archived_at
+                )
+                VALUES (
+                    'manual-node-before-origin',
+                    'migration-workspace',
+                    'Manual node',
+                    'Manual content',
+                    'concept',
+                    'accepted',
+                    '2026-06-14T00:00:00.000Z',
+                    '2026-06-14T00:00:00.000Z',
+                    NULL
+                )
+                ",
+                [],
+            )
+            .expect("seed manual node before migration 7");
+        assert_eq!(
+            column_exists(&connection, "knowledge_nodes", "ai_run_id"),
+            None
+        );
+
+        run(&mut connection).expect("apply knowledge AI run origin migration");
+
+        assert_eq!(
+            column_exists(&connection, "knowledge_nodes", "ai_run_id"),
+            Some("ai_run_id".into())
+        );
+        let existing_origin = connection
+            .query_row(
+                "
+                SELECT ai_run_id
+                FROM knowledge_nodes
+                WHERE id = 'manual-node-before-origin'
+                ",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .expect("read migrated manual node origin");
+        assert!(existing_origin.is_none());
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -279,7 +375,7 @@ mod tests {
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
         );
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -291,7 +387,7 @@ mod tests {
         run(&mut connection).expect("apply AI runs migration");
 
         assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -346,7 +442,7 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -383,7 +479,7 @@ mod tests {
             )
             .expect("read migrated default model");
         assert_eq!(default_model, "deepseek-v4-flash");
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(migration_count(&connection), 7);
     }
 
     #[test]
@@ -425,7 +521,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (7, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (8, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
                 ",
                 [],
             )
@@ -509,7 +605,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 6);
+        assert_eq!(migration_count(&connection), 7);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -528,6 +624,10 @@ mod tests {
         assert_eq!(
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
+        );
+        assert_eq!(
+            column_exists(&connection, "knowledge_nodes", "ai_run_id"),
+            Some("ai_run_id".into())
         );
 
         drop(connection);
@@ -554,6 +654,20 @@ mod tests {
             )
             .optional()
             .expect("query sqlite schema")
+    }
+
+    fn column_exists(connection: &Connection, table: &str, column: &str) -> Option<String> {
+        let mut statement = connection
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .expect("prepare table info query");
+
+        statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query table info")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect table columns")
+            .into_iter()
+            .find(|name| name == column)
     }
 
     fn migration_count(connection: &Connection) -> i64 {

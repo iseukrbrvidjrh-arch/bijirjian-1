@@ -4,6 +4,7 @@ import {
   useMarkSourceDismissed,
   useMarkSourceProcessed,
 } from "@/features/capture/source-queries";
+import { useCreateKnowledgeDraftFromLatestSummary } from "@/features/knowledge/knowledge-queries";
 import {
   useLatestSourceSummary,
   useSummarizeSource,
@@ -47,24 +48,41 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
   const processedMutation = useMarkSourceProcessed();
   const dismissedMutation = useMarkSourceDismissed();
   const summaryMutation = useSummarizeSource();
+  const draftMutation = useCreateKnowledgeDraftFromLatestSummary();
   const latestSummaryQuery = useLatestSourceSummary(source.id);
   const latestSummary = latestSummaryQuery.data;
   const isPending =
     processedMutation.isPending ||
     dismissedMutation.isPending ||
-    summaryMutation.isPending;
+    summaryMutation.isPending ||
+    draftMutation.isPending;
   const mutationError =
     processedMutation.error ??
     dismissedMutation.error ??
-    summaryMutation.error;
+    summaryMutation.error ??
+    draftMutation.error;
 
   async function summarize() {
     processedMutation.reset();
     dismissedMutation.reset();
     summaryMutation.reset();
+    draftMutation.reset();
 
     try {
       await summaryMutation.mutateAsync(source.id);
+    } catch {
+      // Mutation state renders the error in this source card.
+    }
+  }
+
+  async function createKnowledgeDraft() {
+    processedMutation.reset();
+    dismissedMutation.reset();
+    summaryMutation.reset();
+    draftMutation.reset();
+
+    try {
+      await draftMutation.mutateAsync(source.id);
     } catch {
       // Mutation state renders the error in this source card.
     }
@@ -97,10 +115,27 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
           <Button
             size="sm"
             type="button"
+            variant="outline"
+            disabled={
+              isPending ||
+              latestSummary?.status !== "succeeded" ||
+              !latestSummary.summary ||
+              draftMutation.isSuccess
+            }
+            onClick={() => void createKnowledgeDraft()}
+          >
+            {draftMutation.isPending
+              ? "Creating draft..."
+              : "Create Knowledge Draft"}
+          </Button>
+          <Button
+            size="sm"
+            type="button"
             disabled={isPending}
             onClick={() => {
               dismissedMutation.reset();
               summaryMutation.reset();
+              draftMutation.reset();
               processedMutation.mutate(source.id);
             }}
           >
@@ -114,6 +149,7 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
             onClick={() => {
               processedMutation.reset();
               summaryMutation.reset();
+              draftMutation.reset();
               dismissedMutation.mutate(source.id);
             }}
           >
@@ -160,6 +196,14 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
         )}
         {summaryMutation.isPending && (
           <span className="text-muted-foreground">Summarizing...</span>
+        )}
+        {draftMutation.isPending && (
+          <span className="text-muted-foreground">
+            Creating draft...
+          </span>
+        )}
+        {draftMutation.isSuccess && (
+          <span>Knowledge draft created.</span>
         )}
         {processedMutation.isPending && (
           <span className="text-muted-foreground">

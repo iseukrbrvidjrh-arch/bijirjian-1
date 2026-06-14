@@ -2,11 +2,15 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::{
-    application::services::{DefaultKnowledgeService, KnowledgeService},
+    application::services::{
+        DefaultKnowledgeDraftService, DefaultKnowledgeService, KnowledgeDraftService,
+        KnowledgeService,
+    },
     domain::KnowledgeNode,
     error::AppError,
     infrastructure::database::repositories::{
-        SqliteKnowledgeRepository, SqliteWorkspaceRepository,
+        SqliteAiRunRepository, SqliteKnowledgeRepository, SqliteSourceRepository,
+        SqliteWorkspaceRepository,
     },
     state::AppState,
 };
@@ -18,6 +22,7 @@ const DEFAULT_KNOWLEDGE_LIMIT: usize = 50;
 pub struct KnowledgeNodeDto {
     id: String,
     workspace_id: String,
+    ai_run_id: Option<String>,
     title: String,
     content: String,
     knowledge_type: String,
@@ -32,6 +37,7 @@ impl From<KnowledgeNode> for KnowledgeNodeDto {
         Self {
             id: node.id,
             workspace_id: node.workspace_id,
+            ai_run_id: node.ai_run_id,
             title: node.title,
             content: node.content,
             knowledge_type: node.knowledge_type.to_string(),
@@ -41,6 +47,27 @@ impl From<KnowledgeNode> for KnowledgeNodeDto {
             archived_at: node.archived_at,
         }
     }
+}
+
+#[tauri::command]
+pub fn create_knowledge_draft_from_latest_summary(
+    source_id: String,
+    state: State<'_, AppState>,
+) -> Result<KnowledgeNodeDto, AppError> {
+    let workspace_repository = SqliteWorkspaceRepository::new(&state.database);
+    let source_repository = SqliteSourceRepository::new(&state.database);
+    let ai_run_repository = SqliteAiRunRepository::new(&state.database);
+    let knowledge_repository = SqliteKnowledgeRepository::new(&state.database);
+    let service = DefaultKnowledgeDraftService::new(
+        &workspace_repository,
+        &source_repository,
+        &ai_run_repository,
+        &knowledge_repository,
+    );
+
+    service
+        .create_from_latest_summary(source_id)
+        .map(Into::into)
 }
 
 #[tauri::command]
@@ -83,6 +110,7 @@ mod tests {
         let dto = KnowledgeNodeDto::from(KnowledgeNode {
             id: "knowledge-1".to_owned(),
             workspace_id: "workspace-1".to_owned(),
+            ai_run_id: Some("ai-run-1".to_owned()),
             title: "Local First".to_owned(),
             content: "Data stays local.".to_owned(),
             knowledge_type: KnowledgeType::Concept,
@@ -96,11 +124,15 @@ mod tests {
 
         assert_eq!(json["id"], "knowledge-1");
         assert_eq!(json["workspaceId"], "workspace-1");
+        assert_eq!(json["aiRunId"], "ai-run-1");
         assert_eq!(json["knowledgeType"], "concept");
         assert_eq!(json["status"], "accepted");
         assert_eq!(json["createdAt"], "2026-06-14T00:00:00.000Z");
         assert_eq!(json["updatedAt"], "2026-06-14T00:00:00.000Z");
         assert!(json["archivedAt"].is_null());
-        assert_eq!(object.len(), 9);
+        assert_eq!(object.len(), 10);
+        assert!(object.get("apiKey").is_none());
+        assert!(object.get("sourceContent").is_none());
+        assert!(object.get("rawResponse").is_none());
     }
 }

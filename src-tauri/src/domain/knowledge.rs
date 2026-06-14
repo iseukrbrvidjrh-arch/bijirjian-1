@@ -91,6 +91,7 @@ impl fmt::Display for KnowledgeStatus {
 pub struct KnowledgeNode {
     pub id: String,
     pub workspace_id: String,
+    pub ai_run_id: Option<String>,
     pub title: String,
     pub content: String,
     pub knowledge_type: KnowledgeType,

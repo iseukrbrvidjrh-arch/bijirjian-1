@@ -16,6 +16,7 @@ export type KnowledgeStatus =
 export interface KnowledgeNodeDto {
   id: string;
   workspaceId: string;
+  aiRunId: string | null;
   title: string;
   content: string;
   knowledgeType: KnowledgeType;

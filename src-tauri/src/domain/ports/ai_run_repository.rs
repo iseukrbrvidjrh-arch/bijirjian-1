@@ -23,4 +23,6 @@ pub trait AiRunRepository: Send + Sync {
     ) -> Result<AiRun, AppError>;
 
     fn find_latest_for_source(&self, source_id: &str) -> Result<Option<AiRun>, AppError>;
+
+    fn find_latest_succeeded_for_source(&self, source_id: &str) -> Result<Option<AiRun>, AppError>;
 }

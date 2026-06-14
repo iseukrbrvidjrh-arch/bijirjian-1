@@ -44,9 +44,12 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">{node.title}</h3>
-          <p className="mt-1 text-xs capitalize text-muted-foreground">
-            {node.knowledgeType} · {node.status}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <span className="capitalize text-muted-foreground">
+              {node.knowledgeType}
+            </span>
+            <KnowledgeStatusLabel status={node.status} />
+          </div>
         </div>
         <time
           className="text-xs text-muted-foreground"
@@ -59,6 +62,27 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
         {node.content}
       </p>
     </li>
+  );
+}
+
+function KnowledgeStatusLabel({
+  status,
+}: {
+  status: KnowledgeNodeDto["status"];
+}) {
+  const tone =
+    status === "proposed"
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : status === "accepted"
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "border-border bg-muted text-muted-foreground";
+
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 font-medium capitalize ${tone}`}
+    >
+      {status}
+    </span>
   );
 }
 

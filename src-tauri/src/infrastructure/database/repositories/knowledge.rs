@@ -1,7 +1,7 @@
 use std::io;
 
 use chrono::{SecondsFormat, Utc};
-use rusqlite::{params, types::Type};
+use rusqlite::{params, types::Type, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
 
 use crate::{
@@ -37,6 +37,7 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                 INSERT INTO knowledge_nodes (
                     id,
                     workspace_id,
+                    ai_run_id,
                     title,
                     content,
                     knowledge_type,
@@ -45,7 +46,7 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                     updated_at,
                     archived_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, NULL)
+                VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?7, NULL)
                 ",
                 params![
                     id,
@@ -61,10 +62,93 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
             Ok(KnowledgeNode {
                 id,
                 workspace_id: workspace_id.to_owned(),
+                ai_run_id: None,
                 title: title.to_owned(),
                 content: content.to_owned(),
                 knowledge_type,
                 status: KnowledgeStatus::Accepted,
+                created_at: now.clone(),
+                updated_at: now,
+                archived_at: None,
+            })
+        })
+    }
+
+    fn insert_proposed_node(
+        &self,
+        workspace_id: &str,
+        ai_run_id: &str,
+        title: &str,
+        content: &str,
+        knowledge_type: KnowledgeType,
+    ) -> Result<KnowledgeNode, AppError> {
+        if knowledge_type != KnowledgeType::Insight {
+            return Err(AppError::Validation(
+                "AI summary drafts must use the insight knowledge type".to_owned(),
+            ));
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let now = current_timestamp();
+
+        self.database.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let existing_node_id = transaction
+                .query_row(
+                    "
+                    SELECT id
+                    FROM knowledge_nodes
+                    WHERE ai_run_id = ?1
+                    ",
+                    [ai_run_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+
+            if let Some(existing_node_id) = existing_node_id {
+                return Err(AppError::Conflict(format!(
+                    "AI run {ai_run_id} already created knowledge node {existing_node_id}"
+                )));
+            }
+
+            transaction.execute(
+                "
+                INSERT INTO knowledge_nodes (
+                    id,
+                    workspace_id,
+                    ai_run_id,
+                    title,
+                    content,
+                    knowledge_type,
+                    status,
+                    created_at,
+                    updated_at,
+                    archived_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, NULL)
+                ",
+                params![
+                    id,
+                    workspace_id,
+                    ai_run_id,
+                    title,
+                    content,
+                    knowledge_type.as_str(),
+                    KnowledgeStatus::Proposed.as_str(),
+                    now,
+                ],
+            )?;
+
+            transaction.commit()?;
+            Ok(KnowledgeNode {
+                id,
+                workspace_id: workspace_id.to_owned(),
+                ai_run_id: Some(ai_run_id.to_owned()),
+                title: title.to_owned(),
+                content: content.to_owned(),
+                knowledge_type,
+                status: KnowledgeStatus::Proposed,
                 created_at: now.clone(),
                 updated_at: now,
                 archived_at: None,
@@ -82,6 +166,7 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                 SELECT
                     id,
                     workspace_id,
+                    ai_run_id,
                     title,
                     content,
                     knowledge_type,
@@ -105,21 +190,22 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
 }
 
 fn map_knowledge_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeNode> {
-    let knowledge_type = row.get::<_, String>(4)?;
-    let status = row.get::<_, String>(5)?;
+    let knowledge_type = row.get::<_, String>(5)?;
+    let status = row.get::<_, String>(6)?;
 
     Ok(KnowledgeNode {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
-        title: row.get(2)?,
-        content: row.get(3)?,
+        ai_run_id: row.get(2)?,
+        title: row.get(3)?,
+        content: row.get(4)?,
         knowledge_type: KnowledgeType::try_from(knowledge_type.as_str())
-            .map_err(|message| invalid_enum_value(4, message))?,
-        status: KnowledgeStatus::try_from(status.as_str())
             .map_err(|message| invalid_enum_value(5, message))?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-        archived_at: row.get(8)?,
+        status: KnowledgeStatus::try_from(status.as_str())
+            .map_err(|message| invalid_enum_value(6, message))?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        archived_at: row.get(9)?,
     })
 }
 
@@ -167,9 +253,46 @@ mod tests {
             .expect("insert manual knowledge node");
 
         assert_eq!(node.workspace_id, workspace.id);
+        assert!(node.ai_run_id.is_none());
         assert_eq!(node.knowledge_type, KnowledgeType::Tool);
         assert_eq!(node.status, KnowledgeStatus::Accepted);
         assert!(node.archived_at.is_none());
+    }
+
+    #[test]
+    fn inserts_one_proposed_insight_per_ai_run() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_ai_run(&database, &workspace.id, "ai-run-1");
+
+        let node = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "ai-run-1",
+                "Summary title",
+                "Summary content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed node");
+        let duplicate = repository.insert_proposed_node(
+            &workspace.id,
+            "ai-run-1",
+            "Duplicate",
+            "Duplicate content",
+            KnowledgeType::Insight,
+        );
+
+        assert_eq!(node.ai_run_id.as_deref(), Some("ai-run-1"));
+        assert_eq!(node.status, KnowledgeStatus::Proposed);
+        assert_eq!(node.knowledge_type, KnowledgeType::Insight);
+        assert!(matches!(
+            duplicate,
+            Err(crate::error::AppError::Conflict(_))
+        ));
     }
 
     #[test]
@@ -290,6 +413,76 @@ mod tests {
                 Ok(())
             })
             .expect("insert workspace");
+    }
+
+    fn seed_ai_run(database: &Database, workspace_id: &str, ai_run_id: &str) {
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "
+                    INSERT INTO sources (
+                        id,
+                        workspace_id,
+                        source_type,
+                        raw_content,
+                        content_hash,
+                        metadata_json,
+                        inbox_status,
+                        captured_at,
+                        processed_at,
+                        created_at,
+                        updated_at,
+                        deleted_at
+                    )
+                    VALUES (
+                        'draft-source',
+                        ?1,
+                        'text',
+                        'Source',
+                        'hash',
+                        '{}',
+                        'unprocessed',
+                        ?2,
+                        NULL,
+                        ?2,
+                        ?2,
+                        NULL
+                    )
+                    ",
+                    params![workspace_id, "2026-06-14T00:00:00.000Z"],
+                )?;
+                connection.execute(
+                    "
+                    INSERT INTO ai_runs (
+                        id,
+                        source_id,
+                        prompt_version_id,
+                        provider_type,
+                        model,
+                        status,
+                        output_text,
+                        error_message,
+                        created_at,
+                        completed_at
+                    )
+                    VALUES (
+                        ?1,
+                        'draft-source',
+                        'builtin-source-summary-v1',
+                        'deepseek',
+                        'deepseek-v4-flash',
+                        'succeeded',
+                        'Summary content',
+                        NULL,
+                        ?2,
+                        ?2
+                    )
+                    ",
+                    params![ai_run_id, "2026-06-14T00:00:01.000Z"],
+                )?;
+                Ok(())
+            })
+            .expect("seed AI run");
     }
 
     fn test_database() -> Database {

@@ -22,3 +22,14 @@ export function listKnowledgeNodes(limit = 50) {
     limit,
   });
 }
+
+export function createKnowledgeDraftFromLatestSummary(
+  sourceId: string,
+) {
+  return invoke<KnowledgeNodeDto>(
+    "create_knowledge_draft_from_latest_summary",
+    {
+      sourceId,
+    },
+  );
+}

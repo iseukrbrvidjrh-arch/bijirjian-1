@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  createKnowledgeDraftFromLatestSummary,
   createKnowledgeNode,
   listKnowledgeNodes,
 } from "@/services/ipc";
@@ -21,6 +22,19 @@ export function useKnowledgeNodes(limit = DEFAULT_KNOWLEDGE_LIMIT) {
   return useQuery({
     queryKey: knowledgeQueryKeys.list(limit),
     queryFn: () => listKnowledgeNodes(limit),
+  });
+}
+
+export function useCreateKnowledgeDraftFromLatestSummary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createKnowledgeDraftFromLatestSummary,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: knowledgeQueryKeys.all,
+      });
+    },
   });
 }
 

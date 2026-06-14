@@ -143,36 +143,50 @@ impl AiRunRepository for SqliteAiRunRepository<'_> {
     }
 
     fn find_latest_for_source(&self, source_id: &str) -> Result<Option<AiRun>, AppError> {
+        self.database
+            .with_connection(|connection| find_latest_ai_run(connection, source_id, None))
+    }
+
+    fn find_latest_succeeded_for_source(&self, source_id: &str) -> Result<Option<AiRun>, AppError> {
         self.database.with_connection(|connection| {
-            connection
-                .query_row(
-                    "
-                    SELECT
-                        run.id,
-                        run.source_id,
-                        run.prompt_version_id,
-                        version.version,
-                        run.provider_type,
-                        run.model,
-                        run.status,
-                        run.output_text,
-                        run.error_message,
-                        run.created_at,
-                        run.completed_at
-                    FROM ai_runs AS run
-                    LEFT JOIN prompt_versions AS version
-                      ON version.id = run.prompt_version_id
-                    WHERE run.source_id = ?1
-                    ORDER BY run.created_at DESC, run.rowid DESC
-                    LIMIT 1
-                    ",
-                    [source_id],
-                    map_ai_run,
-                )
-                .optional()
-                .map_err(AppError::from)
+            find_latest_ai_run(connection, source_id, Some(AiRunStatus::Succeeded))
         })
     }
+}
+
+fn find_latest_ai_run(
+    connection: &rusqlite::Connection,
+    source_id: &str,
+    status: Option<AiRunStatus>,
+) -> Result<Option<AiRun>, AppError> {
+    connection
+        .query_row(
+            "
+            SELECT
+                run.id,
+                run.source_id,
+                run.prompt_version_id,
+                version.version,
+                run.provider_type,
+                run.model,
+                run.status,
+                run.output_text,
+                run.error_message,
+                run.created_at,
+                run.completed_at
+            FROM ai_runs AS run
+            LEFT JOIN prompt_versions AS version
+              ON version.id = run.prompt_version_id
+            WHERE run.source_id = ?1
+              AND (?2 IS NULL OR run.status = ?2)
+            ORDER BY run.created_at DESC, run.rowid DESC
+            LIMIT 1
+            ",
+            params![source_id, status.map(AiRunStatus::as_str)],
+            map_ai_run,
+        )
+        .optional()
+        .map_err(AppError::from)
 }
 
 fn find_ai_run(
@@ -344,6 +358,40 @@ mod tests {
             .find_latest_for_source(&source_id)
             .expect("query latest run")
             .is_none());
+    }
+
+    #[test]
+    fn latest_succeeded_run_ignores_a_newer_failed_run() {
+        let database = test_database();
+        let source_id = seed_source(&database);
+        let repository = SqliteAiRunRepository::new(&database);
+        let succeeded = repository
+            .insert_success(
+                &source_id,
+                "builtin-source-summary-v1",
+                ProviderType::DeepSeek,
+                ProviderModel::DeepSeekV4Flash,
+                "Successful summary",
+            )
+            .expect("insert succeeded run");
+        repository
+            .insert_failure(
+                &source_id,
+                Some("builtin-source-summary-v1"),
+                Some(ProviderType::DeepSeek),
+                Some(ProviderModel::DeepSeekV4Flash),
+                "Newer failure",
+            )
+            .expect("insert newer failed run");
+
+        let found = repository
+            .find_latest_succeeded_for_source(&source_id)
+            .expect("find latest succeeded run")
+            .expect("succeeded run should exist");
+
+        assert_eq!(found.id, succeeded.id);
+        assert_eq!(found.status, AiRunStatus::Succeeded);
+        assert_eq!(found.output_text.as_deref(), Some("Successful summary"));
     }
 
     #[test]

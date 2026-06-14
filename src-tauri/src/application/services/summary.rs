@@ -2,10 +2,10 @@ use crate::{
     application::services::PromptService,
     domain::{
         ports::{
-            CredentialStore, ProviderRouter, ProviderSettingsRepository, SourceRepository,
-            WorkspaceRepository,
+            AiRunRepository, CredentialStore, ProviderRouter, ProviderSettingsRepository,
+            SourceRepository, WorkspaceRepository,
         },
-        ProviderModel, ProviderType,
+        AiRun, ProviderModel, ProviderType,
     },
     error::AppError,
 };
@@ -22,6 +22,8 @@ pub struct SourceSummary {
 
 pub trait SummaryService: Send + Sync {
     fn summarize_source(&self, source_id: String) -> Result<SourceSummary, AppError>;
+
+    fn get_latest_source_summary(&self, source_id: String) -> Result<Option<AiRun>, AppError>;
 }
 
 pub struct DefaultSummaryService<
@@ -32,6 +34,7 @@ pub struct DefaultSummaryService<
     SettingsRepo,
     Credentials,
     Router,
+    AiRunRepo,
 > where
     WorkspaceRepo: WorkspaceRepository + ?Sized,
     SourceRepo: SourceRepository + ?Sized,
@@ -39,6 +42,7 @@ pub struct DefaultSummaryService<
     SettingsRepo: ProviderSettingsRepository + ?Sized,
     Credentials: CredentialStore + ?Sized,
     Router: ProviderRouter + ?Sized,
+    AiRunRepo: AiRunRepository + ?Sized,
 {
     workspace_repository: &'service WorkspaceRepo,
     source_repository: &'service SourceRepo,
@@ -46,9 +50,19 @@ pub struct DefaultSummaryService<
     settings_repository: &'service SettingsRepo,
     credential_store: &'service Credentials,
     provider_router: &'service Router,
+    ai_run_repository: &'service AiRunRepo,
 }
 
-impl<'service, WorkspaceRepo, SourceRepo, PromptSvc, SettingsRepo, Credentials, Router>
+impl<
+        'service,
+        WorkspaceRepo,
+        SourceRepo,
+        PromptSvc,
+        SettingsRepo,
+        Credentials,
+        Router,
+        AiRunRepo,
+    >
     DefaultSummaryService<
         'service,
         WorkspaceRepo,
@@ -57,6 +71,7 @@ impl<'service, WorkspaceRepo, SourceRepo, PromptSvc, SettingsRepo, Credentials, 
         SettingsRepo,
         Credentials,
         Router,
+        AiRunRepo,
     >
 where
     WorkspaceRepo: WorkspaceRepository + ?Sized,
@@ -65,6 +80,7 @@ where
     SettingsRepo: ProviderSettingsRepository + ?Sized,
     Credentials: CredentialStore + ?Sized,
     Router: ProviderRouter + ?Sized,
+    AiRunRepo: AiRunRepository + ?Sized,
 {
     pub const fn new(
         workspace_repository: &'service WorkspaceRepo,
@@ -73,6 +89,7 @@ where
         settings_repository: &'service SettingsRepo,
         credential_store: &'service Credentials,
         provider_router: &'service Router,
+        ai_run_repository: &'service AiRunRepo,
     ) -> Self {
         Self {
             workspace_repository,
@@ -81,11 +98,35 @@ where
             settings_repository,
             credential_store,
             provider_router,
+            ai_run_repository,
+        }
+    }
+
+    fn record_failure<T>(
+        &self,
+        source_id: &str,
+        prompt_version_id: &str,
+        provider_type: Option<ProviderType>,
+        model: Option<ProviderModel>,
+        error: AppError,
+    ) -> Result<T, AppError> {
+        match self.ai_run_repository.insert_failure(
+            source_id,
+            Some(prompt_version_id),
+            provider_type,
+            model,
+            &error.to_string(),
+        ) {
+            Ok(_) => Err(error),
+            Err(record_error) => Err(AppError::State(format!(
+                "{error}; additionally failed to record the AI run: {record_error}"
+            ))),
         }
     }
 }
 
-impl<WorkspaceRepo, SourceRepo, PromptSvc, SettingsRepo, Credentials, Router> SummaryService
+impl<WorkspaceRepo, SourceRepo, PromptSvc, SettingsRepo, Credentials, Router, AiRunRepo>
+    SummaryService
     for DefaultSummaryService<
         '_,
         WorkspaceRepo,
@@ -94,6 +135,7 @@ impl<WorkspaceRepo, SourceRepo, PromptSvc, SettingsRepo, Credentials, Router> Su
         SettingsRepo,
         Credentials,
         Router,
+        AiRunRepo,
     >
 where
     WorkspaceRepo: WorkspaceRepository + ?Sized,
@@ -102,6 +144,7 @@ where
     SettingsRepo: ProviderSettingsRepository + ?Sized,
     Credentials: CredentialStore + ?Sized,
     Router: ProviderRouter + ?Sized,
+    AiRunRepo: AiRunRepository + ?Sized,
 {
     fn summarize_source(&self, source_id: String) -> Result<SourceSummary, AppError> {
         let source_id = source_id.trim();
@@ -116,29 +159,78 @@ where
             .source_repository
             .find_source(&workspace.id, source_id)?;
         let prompt = self.prompt_service.get_default_prompt()?;
-        let settings = self
-            .settings_repository
-            .get_provider_settings()?
-            .ok_or_else(|| {
-                AppError::Validation(
-                    "configure and save an AI provider before summarizing a source".to_owned(),
-                )
-            })?;
-        let api_key = self
-            .credential_store
-            .get_api_key(settings.provider_type)?
-            .ok_or_else(|| {
-                AppError::Validation(
-                    "the configured AI provider does not have a saved API key".to_owned(),
-                )
-            })?;
+        let settings = match self.settings_repository.get_provider_settings() {
+            Ok(Some(settings)) => settings,
+            Ok(None) => {
+                return self.record_failure(
+                    &source.id,
+                    &prompt.active_version.id,
+                    None,
+                    None,
+                    AppError::Validation(
+                        "configure and save an AI provider before summarizing a source".to_owned(),
+                    ),
+                );
+            }
+            Err(error) => {
+                return self.record_failure(
+                    &source.id,
+                    &prompt.active_version.id,
+                    None,
+                    None,
+                    error,
+                );
+            }
+        };
+        let api_key = match self.credential_store.get_api_key(settings.provider_type) {
+            Ok(Some(api_key)) => api_key,
+            Ok(None) => {
+                return self.record_failure(
+                    &source.id,
+                    &prompt.active_version.id,
+                    Some(settings.provider_type),
+                    Some(settings.default_model),
+                    AppError::Validation(
+                        "the configured AI provider does not have a saved API key".to_owned(),
+                    ),
+                );
+            }
+            Err(error) => {
+                return self.record_failure(
+                    &source.id,
+                    &prompt.active_version.id,
+                    Some(settings.provider_type),
+                    Some(settings.default_model),
+                    error,
+                );
+            }
+        };
         let user_content = wrap_source_content(&source.raw_content);
-        let summary = self.provider_router.generate_text(
+        let summary = match self.provider_router.generate_text(
             settings.provider_type,
             settings.default_model,
             &api_key,
             &prompt.active_version.prompt_content,
             &user_content,
+        ) {
+            Ok(summary) => summary,
+            Err(error) => {
+                return self.record_failure(
+                    &source.id,
+                    &prompt.active_version.id,
+                    Some(settings.provider_type),
+                    Some(settings.default_model),
+                    error,
+                );
+            }
+        };
+
+        self.ai_run_repository.insert_success(
+            &source.id,
+            &prompt.active_version.id,
+            settings.provider_type,
+            settings.default_model,
+            &summary,
         )?;
 
         Ok(SourceSummary {
@@ -149,6 +241,22 @@ where
             prompt_version_id: prompt.active_version.id,
             prompt_version: prompt.active_version.version,
         })
+    }
+
+    fn get_latest_source_summary(&self, source_id: String) -> Result<Option<AiRun>, AppError> {
+        let source_id = source_id.trim();
+        if source_id.is_empty() {
+            return Err(AppError::Validation(
+                "source_id must not be empty".to_owned(),
+            ));
+        }
+
+        let workspace = self.workspace_repository.ensure_default_workspace()?;
+        let source = self
+            .source_repository
+            .find_source(&workspace.id, source_id)?;
+
+        self.ai_run_repository.find_latest_for_source(&source.id)
     }
 }
 
@@ -173,16 +281,16 @@ mod tests {
         application::services::DefaultPromptService,
         domain::{
             ports::{
-                CredentialStore, PromptRepository, ProviderRouter, ProviderSettingsRepository,
-                SourceRepository, WorkspaceRepository,
+                AiRunRepository, CredentialStore, PromptRepository, ProviderRouter,
+                ProviderSettingsRepository, SourceRepository, WorkspaceRepository,
             },
-            InboxStatus, ProviderModel, ProviderType,
+            AiRunStatus, InboxStatus, ProviderModel, ProviderType,
         },
         error::AppError,
         infrastructure::database::{
             repositories::{
-                SqlitePromptRepository, SqliteProviderSettingsRepository, SqliteSourceRepository,
-                SqliteWorkspaceRepository,
+                SqliteAiRunRepository, SqlitePromptRepository, SqliteProviderSettingsRepository,
+                SqliteSourceRepository, SqliteWorkspaceRepository,
             },
             Database,
         },
@@ -195,6 +303,7 @@ mod tests {
         let source_repository = SqliteSourceRepository::new(&database);
         let prompt_repository = SqlitePromptRepository::new(&database);
         let settings_repository = SqliteProviderSettingsRepository::new(&database);
+        let ai_run_repository = SqliteAiRunRepository::new(&database);
         let workspace = workspace_repository
             .ensure_default_workspace()
             .expect("create default workspace");
@@ -227,6 +336,7 @@ mod tests {
             &settings_repository,
             &credentials,
             &router,
+            &ai_run_repository,
         );
         let before = source_repository
             .find_source(&workspace.id, &source.id)
@@ -239,6 +349,10 @@ mod tests {
             .find_source(&workspace.id, &source.id)
             .expect("read source after summary");
         let request = router.request();
+        let ai_run = ai_run_repository
+            .find_latest_for_source(&source.id)
+            .expect("load persisted AI run")
+            .expect("succeeded AI run should be recorded");
 
         assert_eq!(result.source_id, source.id);
         assert_eq!(result.summary, "Generated summary");
@@ -261,6 +375,54 @@ mod tests {
         assert_eq!(before, after);
         assert_eq!(after.inbox_status, InboxStatus::Unprocessed);
         assert!(after.processed_at.is_none());
+        assert_eq!(ai_run.status, AiRunStatus::Succeeded);
+        assert_eq!(ai_run.output_text.as_deref(), Some("Generated summary"));
+        assert_eq!(ai_run.prompt_version_id, Some(active_version.id));
+        assert_eq!(ai_run.provider_type, Some(ProviderType::DeepSeek));
+        assert_eq!(ai_run.model, Some(ProviderModel::DeepSeekV4Pro));
+        assert!(!format!("{ai_run:?}").contains("test-api-key"));
+
+        let persisted_text = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "
+                        SELECT
+                            id || source_id || COALESCE(prompt_version_id, '') ||
+                            COALESCE(provider_type, '') || COALESCE(model, '') ||
+                            status || COALESCE(output_text, '') ||
+                            COALESCE(error_message, '') || created_at || completed_at
+                        FROM ai_runs
+                        WHERE id = ?1
+                        ",
+                        [&ai_run.id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(AppError::from)
+            })
+            .expect("read persisted AI run fields");
+        assert!(!persisted_text.contains("test-api-key"));
+
+        service
+            .summarize_source(source.id.clone())
+            .expect("summarize the source again");
+        let latest_run = ai_run_repository
+            .find_latest_for_source(&source.id)
+            .expect("load newest AI run")
+            .expect("newest AI run should exist");
+        let run_count = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM ai_runs WHERE source_id = ?1",
+                        [&source.id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(AppError::from)
+            })
+            .expect("count AI runs");
+        assert_ne!(latest_run.id, ai_run.id);
+        assert_eq!(run_count, 2);
     }
 
     #[test]
@@ -270,6 +432,7 @@ mod tests {
         let source_repository = SqliteSourceRepository::new(&database);
         let prompt_repository = SqlitePromptRepository::new(&database);
         let settings_repository = SqliteProviderSettingsRepository::new(&database);
+        let ai_run_repository = SqliteAiRunRepository::new(&database);
         let prompt_service = DefaultPromptService::new(&prompt_repository);
         let credentials = FakeCredentialStore::default();
         let router = FakeProviderRouter::new("unused");
@@ -280,6 +443,7 @@ mod tests {
             &settings_repository,
             &credentials,
             &router,
+            &ai_run_repository,
         );
 
         assert!(matches!(
@@ -357,6 +521,7 @@ mod tests {
         let source_repository = SqliteSourceRepository::new(&database);
         let prompt_repository = SqlitePromptRepository::new(&database);
         let settings_repository = SqliteProviderSettingsRepository::new(&database);
+        let ai_run_repository = SqliteAiRunRepository::new(&database);
         let workspace = workspace_repository
             .ensure_default_workspace()
             .expect("create default workspace");
@@ -373,20 +538,91 @@ mod tests {
             &settings_repository,
             &credentials,
             &router,
+            &ai_run_repository,
         );
 
         assert!(matches!(
             service.summarize_source(source.id.clone()),
             Err(AppError::Validation(_))
         ));
+        let missing_settings_run = ai_run_repository
+            .find_latest_for_source(&source.id)
+            .expect("load failed run")
+            .expect("missing settings should be recorded");
+        assert_eq!(missing_settings_run.status, AiRunStatus::Failed);
+        assert!(missing_settings_run.provider_type.is_none());
+        assert!(missing_settings_run.model.is_none());
+        assert!(missing_settings_run
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("configure and save")));
 
         settings_repository
             .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash)
             .expect("save provider settings");
         assert!(matches!(
-            service.summarize_source(source.id),
+            service.summarize_source(source.id.clone()),
             Err(AppError::Validation(_))
         ));
+        let missing_key_run = ai_run_repository
+            .find_latest_for_source(&source.id)
+            .expect("load latest failed run")
+            .expect("missing key should be recorded");
+        assert_eq!(missing_key_run.status, AiRunStatus::Failed);
+        assert_eq!(missing_key_run.provider_type, Some(ProviderType::DeepSeek));
+        assert_eq!(missing_key_run.model, Some(ProviderModel::DeepSeekV4Flash));
+        assert!(missing_key_run
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("saved API key")));
+    }
+
+    #[test]
+    fn records_provider_failures_and_exposes_the_latest_run() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let source_repository = SqliteSourceRepository::new(&database);
+        let prompt_repository = SqlitePromptRepository::new(&database);
+        let settings_repository = SqliteProviderSettingsRepository::new(&database);
+        let ai_run_repository = SqliteAiRunRepository::new(&database);
+        let source_id = seed_source(&database);
+        settings_repository
+            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Pro)
+            .expect("save provider settings");
+        let prompt_service = DefaultPromptService::new(&prompt_repository);
+        let credentials = FakeCredentialStore::default();
+        credentials
+            .set_api_key(ProviderType::DeepSeek, "test-api-key")
+            .expect("save fake API key");
+        let router = FakeProviderRouter::failing("provider unavailable");
+        let service = DefaultSummaryService::new(
+            &workspace_repository,
+            &source_repository,
+            &prompt_service,
+            &settings_repository,
+            &credentials,
+            &router,
+            &ai_run_repository,
+        );
+
+        let error = service
+            .summarize_source(source_id.clone())
+            .expect_err("provider failure should be returned");
+        let latest = service
+            .get_latest_source_summary(source_id)
+            .expect("load latest summary")
+            .expect("failed AI run should exist");
+
+        assert!(matches!(error, AppError::AiProvider(_)));
+        assert_eq!(latest.status, AiRunStatus::Failed);
+        assert_eq!(latest.provider_type, Some(ProviderType::DeepSeek));
+        assert_eq!(latest.model, Some(ProviderModel::DeepSeekV4Pro));
+        assert_eq!(latest.prompt_version, Some(1));
+        assert!(latest
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("provider unavailable")));
+        assert!(!format!("{latest:?}").contains("test-api-key"));
     }
 
     #[test]
@@ -441,6 +677,7 @@ mod tests {
         let source_repository = SqliteSourceRepository::new(database);
         let prompt_repository = SqlitePromptRepository::new(database);
         let settings_repository = SqliteProviderSettingsRepository::new(database);
+        let ai_run_repository = SqliteAiRunRepository::new(database);
         settings_repository
             .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash)
             .expect("save provider settings");
@@ -457,6 +694,7 @@ mod tests {
             &settings_repository,
             &credentials,
             &router,
+            &ai_run_repository,
         );
 
         let error = service
@@ -539,14 +777,21 @@ mod tests {
     }
 
     struct FakeProviderRouter {
-        summary: String,
+        result: Result<String, String>,
         request: Mutex<Option<GenerationRequest>>,
     }
 
     impl FakeProviderRouter {
         fn new(summary: &str) -> Self {
             Self {
-                summary: summary.to_owned(),
+                result: Ok(summary.to_owned()),
+                request: Mutex::new(None),
+            }
+        }
+
+        fn failing(message: &str) -> Self {
+            Self {
+                result: Err(message.to_owned()),
                 request: Mutex::new(None),
             }
         }
@@ -584,7 +829,7 @@ mod tests {
                 system_prompt: system_prompt.to_owned(),
                 user_content: user_content.to_owned(),
             });
-            Ok(self.summary.clone())
+            self.result.clone().map_err(AppError::AiProvider)
         }
     }
 }

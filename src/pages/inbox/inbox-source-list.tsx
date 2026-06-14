@@ -1,14 +1,14 @@
-import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   useInboxSources,
   useMarkSourceDismissed,
   useMarkSourceProcessed,
 } from "@/features/capture/source-queries";
-import { useSummarizeSource } from "@/features/summary/source-summary-queries";
+import {
+  useLatestSourceSummary,
+  useSummarizeSource,
+} from "@/features/summary/source-summary-queries";
 import type { SourceDto } from "@/types/source";
-import type { SourceSummaryDto } from "@/types/summary";
 
 export function InboxSourceList() {
   const inboxQuery = useInboxSources();
@@ -47,7 +47,8 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
   const processedMutation = useMarkSourceProcessed();
   const dismissedMutation = useMarkSourceDismissed();
   const summaryMutation = useSummarizeSource();
-  const [summary, setSummary] = useState<SourceSummaryDto>();
+  const latestSummaryQuery = useLatestSourceSummary(source.id);
+  const latestSummary = latestSummaryQuery.data;
   const isPending =
     processedMutation.isPending ||
     dismissedMutation.isPending ||
@@ -63,8 +64,7 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
     summaryMutation.reset();
 
     try {
-      const result = await summaryMutation.mutateAsync(source.id);
-      setSummary(result);
+      await summaryMutation.mutateAsync(source.id);
     } catch {
       // Mutation state renders the error in this source card.
     }
@@ -122,20 +122,42 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
         </div>
       </div>
 
-      {summary && (
+      {latestSummary?.status === "succeeded" && latestSummary.summary && (
         <section className="mt-4 rounded-md border bg-muted/30 p-4">
           <h3 className="text-sm font-semibold">AI Summary</h3>
           <p className="mt-2 whitespace-pre-wrap break-words text-sm">
-            {summary.summary}
+            {latestSummary.summary}
           </p>
           <p className="mt-3 text-xs text-muted-foreground">
-            {summary.providerType} · {summary.model} · Prompt version{" "}
-            {summary.promptVersion}
+            {latestSummary.providerType} · {latestSummary.model} · Prompt
+            version {latestSummary.promptVersion}
+          </p>
+        </section>
+      )}
+
+      {latestSummary?.status === "failed" && (
+        <section className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+          <h3 className="text-sm font-semibold text-destructive">
+            Latest summary failed
+          </h3>
+          <p className="mt-2 text-sm text-destructive">
+            {latestSummary.errorMessage ?? "The AI summary request failed."}
           </p>
         </section>
       )}
 
       <div className="mt-2 min-h-5 text-xs" aria-live="polite">
+        {latestSummaryQuery.isPending && (
+          <span className="text-muted-foreground">
+            Loading latest summary...
+          </span>
+        )}
+        {latestSummaryQuery.isError && (
+          <span className="text-destructive" role="alert">
+            Could not load the latest summary:{" "}
+            {latestSummaryQuery.error.message}
+          </span>
+        )}
         {summaryMutation.isPending && (
           <span className="text-muted-foreground">Summarizing...</span>
         )}

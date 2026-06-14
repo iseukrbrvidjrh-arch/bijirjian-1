@@ -35,6 +35,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0004_prompt_registry.sql"),
         checksum: "07ad4f5c133637e9c1c705e3676b870c73b63a543459fd61d87a72ee5cdee9ef",
     },
+    Migration {
+        version: 5,
+        name: "ai_runs",
+        sql: include_str!("../../../migrations/0005_ai_runs.sql"),
+        checksum: "5fad4d119fe5f445ec03dd509fca49f49afc546b5f3adc33cbcee7e686eb3fde",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -218,7 +224,8 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
-        assert_eq!(migration_count(&connection), 4);
+        assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
+        assert_eq!(migration_count(&connection), 5);
     }
 
     #[test]
@@ -228,7 +235,6 @@ mod tests {
         run(&mut connection).expect("run initial migration");
         run(&mut connection).expect("run migrations again");
 
-        assert_eq!(migration_count(&connection), 4);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -243,6 +249,20 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
+        assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
+        assert_eq!(migration_count(&connection), 5);
+    }
+
+    #[test]
+    fn applies_ai_runs_to_an_existing_version_four_database() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..4]).expect("run through migration 4");
+        assert_eq!(table_exists(&connection, "ai_runs"), None);
+
+        run(&mut connection).expect("apply AI runs migration");
+
+        assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
+        assert_eq!(migration_count(&connection), 5);
     }
 
     #[test]
@@ -297,7 +317,7 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
-        assert_eq!(migration_count(&connection), 4);
+        assert_eq!(migration_count(&connection), 5);
     }
 
     #[test]
@@ -334,7 +354,7 @@ mod tests {
             )
             .expect("read migrated default model");
         assert_eq!(default_model, "deepseek-v4-flash");
-        assert_eq!(migration_count(&connection), 4);
+        assert_eq!(migration_count(&connection), 5);
     }
 
     #[test]
@@ -376,7 +396,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (5, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (6, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
                 ",
                 [],
             )
@@ -460,7 +480,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 4);
+        assert_eq!(migration_count(&connection), 5);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -475,6 +495,7 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
+        assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
 
         drop(connection);
         let _ = fs::remove_file(&database_path);

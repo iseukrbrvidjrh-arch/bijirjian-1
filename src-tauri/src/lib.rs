@@ -30,7 +30,8 @@ pub fn run() {
             commands::prompt::list_prompt_versions,
             commands::prompt::create_prompt_version,
             commands::prompt::set_active_prompt_version,
-            commands::summary::summarize_source
+            commands::summary::summarize_source,
+            commands::summary::get_latest_source_summary
         ])
         .setup(|app| {
             let database = infrastructure::database::initialize(app.handle())?;

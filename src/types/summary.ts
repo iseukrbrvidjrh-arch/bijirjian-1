@@ -11,3 +11,19 @@ export interface SourceSummaryDto {
   promptVersionId: string;
   promptVersion: number;
 }
+
+export type AiRunStatus = "succeeded" | "failed";
+
+export interface LatestSourceSummaryDto {
+  runId: string;
+  sourceId: string;
+  summary: string | null;
+  status: AiRunStatus;
+  errorMessage: string | null;
+  providerType: AiProviderType | null;
+  model: AiProviderModel | null;
+  promptVersionId: string | null;
+  promptVersion: number | null;
+  createdAt: string;
+  completedAt: string;
+}

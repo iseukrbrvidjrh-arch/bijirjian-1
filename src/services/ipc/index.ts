@@ -15,4 +15,7 @@ export {
   listPromptVersions,
   setActivePromptVersion,
 } from "./prompt-client";
-export { summarizeSource } from "./summary-client";
+export {
+  getLatestSourceSummary,
+  summarizeSource,
+} from "./summary-client";

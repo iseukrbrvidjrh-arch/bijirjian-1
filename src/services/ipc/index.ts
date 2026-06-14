@@ -1,2 +1,1 @@
-// Typed Tauri IPC clients will be exported from this module.
-export {};
+export { captureTextSource, listInboxSources } from "./source-client";

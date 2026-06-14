@@ -4,6 +4,7 @@ use std::{error::Error, fmt};
 pub enum AppError {
     Database(rusqlite::Error),
     Io(std::io::Error),
+    Migration(String),
     Tauri(tauri::Error),
 }
 
@@ -12,6 +13,7 @@ impl fmt::Display for AppError {
         match self {
             Self::Database(error) => write!(formatter, "database error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
+            Self::Migration(message) => write!(formatter, "migration error: {message}"),
             Self::Tauri(error) => write!(formatter, "Tauri error: {error}"),
         }
     }

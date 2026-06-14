@@ -1,3 +1,6 @@
+pub mod migrations;
+pub mod repositories;
+
 use std::{fs, sync::Mutex, time::Duration};
 
 use rusqlite::Connection;
@@ -13,7 +16,7 @@ pub fn initialize(app: &AppHandle) -> Result<Database, AppError> {
     let app_data_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_data_dir)?;
 
-    let connection = Connection::open(app_data_dir.join("second-brain-os.sqlite3"))?;
+    let mut connection = Connection::open(app_data_dir.join("second-brain-os.sqlite3"))?;
     connection.execute_batch(
         "
         PRAGMA foreign_keys = ON;
@@ -21,6 +24,7 @@ pub fn initialize(app: &AppHandle) -> Result<Database, AppError> {
         ",
     )?;
     connection.busy_timeout(Duration::from_secs(5))?;
+    migrations::run(&mut connection)?;
 
     Ok(Database {
         _connection: Mutex::new(connection),

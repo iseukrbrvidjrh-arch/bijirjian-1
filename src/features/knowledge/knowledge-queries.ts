@@ -5,6 +5,8 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  acceptKnowledgeNode,
+  archiveKnowledgeNode,
   createKnowledgeDraftFromLatestSummary,
   createKnowledgeNode,
   listKnowledgeNodes,
@@ -22,6 +24,32 @@ export function useKnowledgeNodes(limit = DEFAULT_KNOWLEDGE_LIMIT) {
   return useQuery({
     queryKey: knowledgeQueryKeys.list(limit),
     queryFn: () => listKnowledgeNodes(limit),
+  });
+}
+
+export function useAcceptKnowledgeNode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: acceptKnowledgeNode,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: knowledgeQueryKeys.all,
+      });
+    },
+  });
+}
+
+export function useArchiveKnowledgeNode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: archiveKnowledgeNode,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: knowledgeQueryKeys.all,
+      });
+    },
   });
 }
 

@@ -20,6 +20,8 @@ export {
   summarizeSource,
 } from "./summary-client";
 export {
+  acceptKnowledgeNode,
+  archiveKnowledgeNode,
   createKnowledgeDraftFromLatestSummary,
   createKnowledgeNode,
   listKnowledgeNodes,

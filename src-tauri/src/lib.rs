@@ -26,6 +26,8 @@ pub fn run() {
             commands::inbox::list_inbox_sources,
             commands::inbox::mark_source_processed,
             commands::inbox::mark_source_dismissed,
+            commands::knowledge::accept_knowledge_node,
+            commands::knowledge::archive_knowledge_node,
             commands::knowledge::create_knowledge_node,
             commands::knowledge::create_knowledge_draft_from_latest_summary,
             commands::knowledge::list_knowledge_nodes,

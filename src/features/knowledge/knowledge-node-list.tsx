@@ -1,4 +1,9 @@
-import { useKnowledgeNodes } from "@/features/knowledge/knowledge-queries";
+import { Button } from "@/components/ui/button";
+import {
+  useAcceptKnowledgeNode,
+  useArchiveKnowledgeNode,
+  useKnowledgeNodes,
+} from "@/features/knowledge/knowledge-queries";
 import type { KnowledgeNodeDto } from "@/types/knowledge";
 
 export function KnowledgeNodeList() {
@@ -39,6 +44,23 @@ export function KnowledgeNodeList() {
 }
 
 function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
+  const acceptMutation = useAcceptKnowledgeNode();
+  const archiveMutation = useArchiveKnowledgeNode();
+  const isPending =
+    acceptMutation.isPending || archiveMutation.isPending;
+  const mutationError =
+    acceptMutation.error ?? archiveMutation.error;
+
+  function acceptNode() {
+    archiveMutation.reset();
+    acceptMutation.mutate(node.id);
+  }
+
+  function archiveNode() {
+    acceptMutation.reset();
+    archiveMutation.mutate(node.id);
+  }
+
   return (
     <li className="rounded-lg border bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -61,6 +83,38 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
       <p className="mt-3 whitespace-pre-wrap break-words text-sm">
         {node.content}
       </p>
+
+      {node.status === "proposed" && (
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              type="button"
+              disabled={isPending}
+              onClick={acceptNode}
+            >
+              {acceptMutation.isPending ? "Accepting…" : "Accept"}
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={archiveNode}
+            >
+              {archiveMutation.isPending ? "Archiving…" : "Archive"}
+            </Button>
+          </div>
+
+          <div className="mt-2 min-h-5 text-xs" aria-live="polite">
+            {mutationError && (
+              <span className="text-destructive" role="alert">
+                {mutationError.message}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </li>
   );
 }

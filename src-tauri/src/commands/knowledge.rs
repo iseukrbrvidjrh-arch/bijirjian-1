@@ -50,6 +50,30 @@ impl From<KnowledgeNode> for KnowledgeNodeDto {
 }
 
 #[tauri::command]
+pub fn accept_knowledge_node(
+    knowledge_id: String,
+    state: State<'_, AppState>,
+) -> Result<KnowledgeNodeDto, AppError> {
+    let workspace_repository = SqliteWorkspaceRepository::new(&state.database);
+    let knowledge_repository = SqliteKnowledgeRepository::new(&state.database);
+    let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
+
+    service.accept_knowledge_node(knowledge_id).map(Into::into)
+}
+
+#[tauri::command]
+pub fn archive_knowledge_node(
+    knowledge_id: String,
+    state: State<'_, AppState>,
+) -> Result<KnowledgeNodeDto, AppError> {
+    let workspace_repository = SqliteWorkspaceRepository::new(&state.database);
+    let knowledge_repository = SqliteKnowledgeRepository::new(&state.database);
+    let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
+
+    service.archive_knowledge_node(knowledge_id).map(Into::into)
+}
+
+#[tauri::command]
 pub fn create_knowledge_draft_from_latest_summary(
     source_id: String,
     state: State<'_, AppState>,
@@ -114,10 +138,10 @@ mod tests {
             title: "Local First".to_owned(),
             content: "Data stays local.".to_owned(),
             knowledge_type: KnowledgeType::Concept,
-            status: KnowledgeStatus::Accepted,
+            status: KnowledgeStatus::Archived,
             created_at: "2026-06-14T00:00:00.000Z".to_owned(),
-            updated_at: "2026-06-14T00:00:00.000Z".to_owned(),
-            archived_at: None,
+            updated_at: "2026-06-14T01:00:00.000Z".to_owned(),
+            archived_at: Some("2026-06-14T01:00:00.000Z".to_owned()),
         });
         let json = serde_json::to_value(dto).expect("serialize knowledge DTO");
         let object = json.as_object().expect("knowledge DTO should be an object");
@@ -126,10 +150,10 @@ mod tests {
         assert_eq!(json["workspaceId"], "workspace-1");
         assert_eq!(json["aiRunId"], "ai-run-1");
         assert_eq!(json["knowledgeType"], "concept");
-        assert_eq!(json["status"], "accepted");
+        assert_eq!(json["status"], "archived");
         assert_eq!(json["createdAt"], "2026-06-14T00:00:00.000Z");
-        assert_eq!(json["updatedAt"], "2026-06-14T00:00:00.000Z");
-        assert!(json["archivedAt"].is_null());
+        assert_eq!(json["updatedAt"], "2026-06-14T01:00:00.000Z");
+        assert_eq!(json["archivedAt"], "2026-06-14T01:00:00.000Z");
         assert_eq!(object.len(), 10);
         assert!(object.get("apiKey").is_none());
         assert!(object.get("sourceContent").is_none());

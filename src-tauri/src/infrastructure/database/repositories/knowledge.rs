@@ -156,6 +156,32 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
         })
     }
 
+    fn accept_proposed_node(
+        &self,
+        workspace_id: &str,
+        knowledge_id: &str,
+    ) -> Result<KnowledgeNode, AppError> {
+        transition_proposed_node(
+            self.database,
+            workspace_id,
+            knowledge_id,
+            KnowledgeStatus::Accepted,
+        )
+    }
+
+    fn archive_proposed_node(
+        &self,
+        workspace_id: &str,
+        knowledge_id: &str,
+    ) -> Result<KnowledgeNode, AppError> {
+        transition_proposed_node(
+            self.database,
+            workspace_id,
+            knowledge_id,
+            KnowledgeStatus::Archived,
+        )
+    }
+
     fn list_nodes(&self, workspace_id: &str, limit: usize) -> Result<Vec<KnowledgeNode>, AppError> {
         let limit = i64::try_from(limit)
             .map_err(|_| AppError::Validation("knowledge limit is too large".to_owned()))?;
@@ -206,6 +232,113 @@ fn map_knowledge_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeNode
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
         archived_at: row.get(9)?,
+    })
+}
+
+fn transition_proposed_node(
+    database: &Database,
+    workspace_id: &str,
+    knowledge_id: &str,
+    target_status: KnowledgeStatus,
+) -> Result<KnowledgeNode, AppError> {
+    let now = current_timestamp();
+
+    database.with_connection(|connection| {
+        let transaction =
+            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let affected_rows = match target_status {
+            KnowledgeStatus::Accepted => transaction.execute(
+                "
+                UPDATE knowledge_nodes
+                SET status = ?1,
+                    updated_at = ?2,
+                    archived_at = NULL
+                WHERE id = ?3
+                  AND workspace_id = ?4
+                  AND status = ?5
+                ",
+                params![
+                    KnowledgeStatus::Accepted.as_str(),
+                    now,
+                    knowledge_id,
+                    workspace_id,
+                    KnowledgeStatus::Proposed.as_str(),
+                ],
+            )?,
+            KnowledgeStatus::Archived => transaction.execute(
+                "
+                UPDATE knowledge_nodes
+                SET status = ?1,
+                    updated_at = ?2,
+                    archived_at = ?2
+                WHERE id = ?3
+                  AND workspace_id = ?4
+                  AND status = ?5
+                ",
+                params![
+                    KnowledgeStatus::Archived.as_str(),
+                    now,
+                    knowledge_id,
+                    workspace_id,
+                    KnowledgeStatus::Proposed.as_str(),
+                ],
+            )?,
+            KnowledgeStatus::Proposed => {
+                return Err(AppError::State(
+                    "proposed is not a valid knowledge review target".to_owned(),
+                ));
+            }
+        };
+
+        if affected_rows == 0 {
+            let node_state = transaction
+                .query_row(
+                    "
+                    SELECT workspace_id, status
+                    FROM knowledge_nodes
+                    WHERE id = ?1
+                    ",
+                    [knowledge_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()?;
+
+            return match node_state {
+                Some((node_workspace_id, status)) if node_workspace_id == workspace_id => {
+                    Err(AppError::Conflict(format!(
+                        "knowledge node {knowledge_id} has status {status} and cannot transition to {}",
+                        target_status.as_str()
+                    )))
+                }
+                _ => Err(AppError::NotFound(format!(
+                    "knowledge node {knowledge_id} does not exist in the current workspace"
+                ))),
+            };
+        }
+
+        let node = transaction.query_row(
+            "
+            SELECT
+                id,
+                workspace_id,
+                ai_run_id,
+                title,
+                content,
+                knowledge_type,
+                status,
+                created_at,
+                updated_at,
+                archived_at
+            FROM knowledge_nodes
+            WHERE id = ?1
+              AND workspace_id = ?2
+            ",
+            params![knowledge_id, workspace_id],
+            map_knowledge_node,
+        )?;
+        transaction.commit()?;
+
+        Ok(node)
     })
 }
 
@@ -293,6 +426,174 @@ mod tests {
             duplicate,
             Err(crate::error::AppError::Conflict(_))
         ));
+    }
+
+    #[test]
+    fn accepts_only_a_proposed_node_and_preserves_archive_state() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_ai_run(&database, &workspace.id, "accept-run");
+        let proposed = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "accept-run",
+                "Proposed",
+                "Content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed node");
+        set_updated_at(&database, &proposed.id, "2026-06-14T00:00:00.000Z");
+
+        let accepted = repository
+            .accept_proposed_node(&workspace.id, &proposed.id)
+            .expect("accept proposed node");
+
+        assert_eq!(accepted.status, KnowledgeStatus::Accepted);
+        assert_ne!(accepted.updated_at, "2026-06-14T00:00:00.000Z");
+        assert!(accepted.archived_at.is_none());
+        assert!(matches!(
+            repository.accept_proposed_node(&workspace.id, &proposed.id),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+        assert!(matches!(
+            repository.archive_proposed_node(&workspace.id, &proposed.id),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn archives_only_a_proposed_node_and_sets_archive_timestamp() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_ai_run(&database, &workspace.id, "archive-run");
+        let proposed = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "archive-run",
+                "Proposed",
+                "Content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed node");
+        set_updated_at(&database, &proposed.id, "2026-06-14T00:00:00.000Z");
+
+        let archived = repository
+            .archive_proposed_node(&workspace.id, &proposed.id)
+            .expect("archive proposed node");
+
+        assert_eq!(archived.status, KnowledgeStatus::Archived);
+        assert_ne!(archived.updated_at, "2026-06-14T00:00:00.000Z");
+        assert_eq!(
+            archived.archived_at.as_deref(),
+            Some(archived.updated_at.as_str())
+        );
+        assert!(matches!(
+            repository.archive_proposed_node(&workspace.id, &proposed.id),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+        assert!(matches!(
+            repository.accept_proposed_node(&workspace.id, &proposed.id),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_cross_workspace_and_manual_accepted_nodes() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "other-workspace", "Other");
+        seed_ai_run(&database, "other-workspace", "other-run");
+        let other_node = repository
+            .insert_proposed_node(
+                "other-workspace",
+                "other-run",
+                "Other",
+                "Other content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert other workspace node");
+        let manual_node = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Manual",
+                "Manual content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert manual node");
+
+        assert!(matches!(
+            repository.accept_proposed_node(&workspace.id, "missing"),
+            Err(crate::error::AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            repository.archive_proposed_node(&workspace.id, &other_node.id),
+            Err(crate::error::AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            repository.accept_proposed_node(&workspace.id, &manual_node.id),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn transitions_only_the_target_node() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_ai_run(&database, &workspace.id, "target-run");
+        seed_ai_run_with_source(
+            &database,
+            &workspace.id,
+            "untouched-source",
+            "untouched-run",
+        );
+        let target = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "target-run",
+                "Target",
+                "Target content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert target node");
+        let untouched = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "untouched-run",
+                "Untouched",
+                "Untouched content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert untouched node");
+
+        repository
+            .accept_proposed_node(&workspace.id, &target.id)
+            .expect("accept target node");
+        let nodes = repository
+            .list_nodes(&workspace.id, 50)
+            .expect("list knowledge nodes");
+        let untouched_after = nodes
+            .into_iter()
+            .find(|node| node.id == untouched.id)
+            .expect("find untouched node");
+
+        assert_eq!(untouched_after.status, KnowledgeStatus::Proposed);
+        assert!(untouched_after.archived_at.is_none());
     }
 
     #[test]
@@ -416,6 +717,15 @@ mod tests {
     }
 
     fn seed_ai_run(database: &Database, workspace_id: &str, ai_run_id: &str) {
+        seed_ai_run_with_source(database, workspace_id, "draft-source", ai_run_id);
+    }
+
+    fn seed_ai_run_with_source(
+        database: &Database,
+        workspace_id: &str,
+        source_id: &str,
+        ai_run_id: &str,
+    ) {
         database
             .with_connection(|connection| {
                 connection.execute(
@@ -435,21 +745,26 @@ mod tests {
                         deleted_at
                     )
                     VALUES (
-                        'draft-source',
                         ?1,
+                        ?2,
                         'text',
                         'Source',
-                        'hash',
+                        ?3,
                         '{}',
                         'unprocessed',
-                        ?2,
+                        ?4,
                         NULL,
-                        ?2,
-                        ?2,
+                        ?4,
+                        ?4,
                         NULL
                     )
                     ",
-                    params![workspace_id, "2026-06-14T00:00:00.000Z"],
+                    params![
+                        source_id,
+                        workspace_id,
+                        format!("hash-{source_id}"),
+                        "2026-06-14T00:00:00.000Z"
+                    ],
                 )?;
                 connection.execute(
                     "
@@ -467,22 +782,38 @@ mod tests {
                     )
                     VALUES (
                         ?1,
-                        'draft-source',
+                        ?2,
                         'builtin-source-summary-v1',
                         'deepseek',
                         'deepseek-v4-flash',
                         'succeeded',
                         'Summary content',
                         NULL,
-                        ?2,
-                        ?2
+                        ?3,
+                        ?3
                     )
                     ",
-                    params![ai_run_id, "2026-06-14T00:00:01.000Z"],
+                    params![ai_run_id, source_id, "2026-06-14T00:00:01.000Z"],
                 )?;
                 Ok(())
             })
             .expect("seed AI run");
+    }
+
+    fn set_updated_at(database: &Database, knowledge_id: &str, updated_at: &str) {
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "
+                    UPDATE knowledge_nodes
+                    SET updated_at = ?1
+                    WHERE id = ?2
+                    ",
+                    params![updated_at, knowledge_id],
+                )?;
+                Ok(())
+            })
+            .expect("set deterministic updated timestamp");
     }
 
     fn test_database() -> Database {

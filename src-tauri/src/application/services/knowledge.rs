@@ -14,6 +14,10 @@ pub trait KnowledgeService: Send + Sync {
         knowledge_type: String,
     ) -> Result<KnowledgeNode, AppError>;
 
+    fn accept_knowledge_node(&self, knowledge_id: String) -> Result<KnowledgeNode, AppError>;
+
+    fn archive_knowledge_node(&self, knowledge_id: String) -> Result<KnowledgeNode, AppError>;
+
     fn list_knowledge_nodes(&self, limit: usize) -> Result<Vec<KnowledgeNode>, AppError>;
 }
 
@@ -77,10 +81,35 @@ where
             .insert_manual_node(&workspace.id, title, content, knowledge_type)
     }
 
+    fn accept_knowledge_node(&self, knowledge_id: String) -> Result<KnowledgeNode, AppError> {
+        let knowledge_id = validate_knowledge_id(&knowledge_id)?;
+        let workspace = self.workspace_repository.ensure_default_workspace()?;
+        self.knowledge_repository
+            .accept_proposed_node(&workspace.id, knowledge_id)
+    }
+
+    fn archive_knowledge_node(&self, knowledge_id: String) -> Result<KnowledgeNode, AppError> {
+        let knowledge_id = validate_knowledge_id(&knowledge_id)?;
+        let workspace = self.workspace_repository.ensure_default_workspace()?;
+        self.knowledge_repository
+            .archive_proposed_node(&workspace.id, knowledge_id)
+    }
+
     fn list_knowledge_nodes(&self, limit: usize) -> Result<Vec<KnowledgeNode>, AppError> {
         let workspace = self.workspace_repository.ensure_default_workspace()?;
         self.knowledge_repository.list_nodes(&workspace.id, limit)
     }
+}
+
+fn validate_knowledge_id(knowledge_id: &str) -> Result<&str, AppError> {
+    let knowledge_id = knowledge_id.trim();
+    if knowledge_id.is_empty() {
+        return Err(AppError::Validation(
+            "knowledge_id must not be empty".to_owned(),
+        ));
+    }
+
+    Ok(knowledge_id)
 }
 
 #[cfg(test)]
@@ -153,6 +182,23 @@ mod tests {
         ] {
             assert!(matches!(result, Err(AppError::Validation(_))));
         }
+    }
+
+    #[test]
+    fn rejects_empty_ids_for_knowledge_review_operations() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let knowledge_repository = SqliteKnowledgeRepository::new(&database);
+        let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
+
+        assert!(matches!(
+            service.accept_knowledge_node(" \n".to_owned()),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            service.archive_knowledge_node("\t".to_owned()),
+            Err(AppError::Validation(_))
+        ));
     }
 
     fn test_database() -> Database {

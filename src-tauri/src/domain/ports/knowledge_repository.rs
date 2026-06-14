@@ -21,5 +21,17 @@ pub trait KnowledgeRepository: Send + Sync {
         knowledge_type: KnowledgeType,
     ) -> Result<KnowledgeNode, AppError>;
 
+    fn accept_proposed_node(
+        &self,
+        workspace_id: &str,
+        knowledge_id: &str,
+    ) -> Result<KnowledgeNode, AppError>;
+
+    fn archive_proposed_node(
+        &self,
+        workspace_id: &str,
+        knowledge_id: &str,
+    ) -> Result<KnowledgeNode, AppError>;
+
     fn list_nodes(&self, workspace_id: &str, limit: usize) -> Result<Vec<KnowledgeNode>, AppError>;
 }

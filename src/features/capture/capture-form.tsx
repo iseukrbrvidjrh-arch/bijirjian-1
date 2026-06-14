@@ -7,6 +7,7 @@ export function CaptureForm() {
   const [rawContent, setRawContent] = useState("");
   const captureMutation = useCaptureTextSource();
   const isEmpty = rawContent.trim().length === 0;
+  const characterCount = Array.from(rawContent).length;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,6 +39,12 @@ export function CaptureForm() {
         placeholder="Write a note, idea, or excerpt..."
         disabled={captureMutation.isPending}
       />
+      <p
+        className="mt-1 text-right text-xs text-muted-foreground"
+        aria-live="polite"
+      >
+        已输入 {characterCount} 字
+      </p>
 
       <div className="mt-3 flex items-center justify-between gap-4">
         <div aria-live="polite">

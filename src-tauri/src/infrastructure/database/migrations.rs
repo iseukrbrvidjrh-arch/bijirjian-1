@@ -59,6 +59,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0008_obsidian_settings.sql"),
         checksum: "ee116c850d5ba844f8b181e04162c995483a1d02c966e4dbfe5e9355f92ffcde",
     },
+    Migration {
+        version: 9,
+        name: "export_records",
+        sql: include_str!("../../../migrations/0009_export_records.sql"),
+        checksum: "4d045867681a1886c80d164643fa26e0a51675642984b21ab018441295aca09b",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -255,7 +261,11 @@ mod tests {
             table_exists(&connection, "obsidian_settings"),
             Some("obsidian_settings".into())
         );
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(
+            table_exists(&connection, "export_records"),
+            Some("export_records".into())
+        );
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -292,7 +302,26 @@ mod tests {
             table_exists(&connection, "obsidian_settings"),
             Some("obsidian_settings".into())
         );
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(
+            table_exists(&connection, "export_records"),
+            Some("export_records".into())
+        );
+        assert_eq!(migration_count(&connection), 9);
+    }
+
+    #[test]
+    fn applies_export_records_to_an_existing_version_eight_database() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..8]).expect("run through migration 8");
+        assert_eq!(table_exists(&connection, "export_records"), None);
+
+        run(&mut connection).expect("apply export records migration");
+
+        assert_eq!(
+            table_exists(&connection, "export_records"),
+            Some("export_records".into())
+        );
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -307,7 +336,7 @@ mod tests {
             table_exists(&connection, "obsidian_settings"),
             Some("obsidian_settings".into())
         );
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -389,7 +418,7 @@ mod tests {
             )
             .expect("read migrated manual node origin");
         assert!(existing_origin.is_none());
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -404,7 +433,7 @@ mod tests {
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
         );
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -416,7 +445,7 @@ mod tests {
         run(&mut connection).expect("apply AI runs migration");
 
         assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -471,7 +500,7 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -508,7 +537,7 @@ mod tests {
             )
             .expect("read migrated default model");
         assert_eq!(default_model, "deepseek-v4-flash");
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
     }
 
     #[test]
@@ -550,7 +579,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (9, 'future_migration', 'future-checksum', '2026-06-15T00:00:00Z')
+                VALUES (10, 'future_migration', 'future-checksum', '2026-06-15T00:00:00Z')
                 ",
                 [],
             )
@@ -634,7 +663,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 8);
+        assert_eq!(migration_count(&connection), 9);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -661,6 +690,10 @@ mod tests {
         assert_eq!(
             table_exists(&connection, "obsidian_settings"),
             Some("obsidian_settings".into())
+        );
+        assert_eq!(
+            table_exists(&connection, "export_records"),
+            Some("export_records".into())
         );
 
         drop(connection);

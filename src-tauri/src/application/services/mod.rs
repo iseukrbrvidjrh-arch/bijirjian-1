@@ -14,7 +14,7 @@ pub use ai_provider::{
     ProviderConnectionResult,
 };
 pub use capture::{CaptureService, DefaultCaptureService};
-pub use export::ExportService;
+pub use export::{DefaultExportService, ExportService};
 pub use feedback::FeedbackService;
 pub use inbox::{DefaultInboxService, InboxService};
 pub use knowledge::{DefaultKnowledgeService, KnowledgeService};

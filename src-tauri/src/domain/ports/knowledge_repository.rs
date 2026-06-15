@@ -4,6 +4,8 @@ use crate::{
 };
 
 pub trait KnowledgeRepository: Send + Sync {
+    fn find_node(&self, workspace_id: &str, knowledge_id: &str) -> Result<KnowledgeNode, AppError>;
+
     fn insert_manual_node(
         &self,
         workspace_id: &str,

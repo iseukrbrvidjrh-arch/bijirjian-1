@@ -1,5 +1,7 @@
 mod ai_run_repository;
 mod credential_store;
+mod export_record_repository;
+mod knowledge_markdown_writer;
 mod knowledge_repository;
 mod obsidian_settings_repository;
 mod prompt_repository;
@@ -10,6 +12,8 @@ mod workspace_repository;
 
 pub use ai_run_repository::AiRunRepository;
 pub use credential_store::CredentialStore;
+pub use export_record_repository::ExportRecordRepository;
+pub use knowledge_markdown_writer::KnowledgeMarkdownWriter;
 pub use knowledge_repository::KnowledgeRepository;
 pub use obsidian_settings_repository::ObsidianSettingsRepository;
 pub use prompt_repository::PromptRepository;

@@ -1,4 +1,5 @@
 pub mod ai_run;
+pub mod export;
 pub mod knowledge;
 pub mod obsidian_settings;
 pub mod ports;
@@ -8,6 +9,7 @@ pub mod source;
 pub mod workspace;
 
 pub use ai_run::{AiRun, AiRunStatus};
+pub use export::{ExportRecord, ExportStatus};
 pub use knowledge::{KnowledgeNode, KnowledgeStatus, KnowledgeType};
 pub use obsidian_settings::ObsidianSettings;
 pub use prompt::{Prompt, PromptVersion};

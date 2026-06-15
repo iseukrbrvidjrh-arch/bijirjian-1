@@ -30,3 +30,4 @@ export {
   getObsidianSettings,
   saveObsidianSettings,
 } from "./obsidian-settings-client";
+export { exportKnowledgeNode } from "./export-client";

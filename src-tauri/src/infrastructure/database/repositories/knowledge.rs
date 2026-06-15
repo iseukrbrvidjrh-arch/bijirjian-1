@@ -21,6 +21,38 @@ impl<'database> SqliteKnowledgeRepository<'database> {
 }
 
 impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
+    fn find_node(&self, workspace_id: &str, knowledge_id: &str) -> Result<KnowledgeNode, AppError> {
+        self.database.with_connection(|connection| {
+            connection
+                .query_row(
+                    "
+                    SELECT
+                        id,
+                        workspace_id,
+                        ai_run_id,
+                        title,
+                        content,
+                        knowledge_type,
+                        status,
+                        created_at,
+                        updated_at,
+                        archived_at
+                    FROM knowledge_nodes
+                    WHERE id = ?1
+                      AND workspace_id = ?2
+                    ",
+                    params![knowledge_id, workspace_id],
+                    map_knowledge_node,
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!(
+                        "knowledge node {knowledge_id} does not exist in the current workspace"
+                    ))
+                })
+        })
+    }
+
     fn insert_manual_node(
         &self,
         workspace_id: &str,
@@ -406,6 +438,40 @@ mod tests {
         assert_eq!(node.knowledge_type, KnowledgeType::Tool);
         assert_eq!(node.status, KnowledgeStatus::Accepted);
         assert!(node.archived_at.is_none());
+        assert_eq!(
+            repository
+                .find_node(&workspace.id, &node.id)
+                .expect("find inserted node"),
+            node
+        );
+    }
+
+    #[test]
+    fn find_node_rejects_missing_and_cross_workspace_nodes() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "other-workspace", "Other");
+        let other_node = repository
+            .insert_manual_node(
+                "other-workspace",
+                "Other node",
+                "Other content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert other node");
+
+        assert!(matches!(
+            repository.find_node(&workspace.id, "missing"),
+            Err(crate::error::AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            repository.find_node(&workspace.id, &other_node.id),
+            Err(crate::error::AppError::NotFound(_))
+        ));
     }
 
     #[test]

@@ -10,20 +10,29 @@ import {
   markSourceDismissed,
   markSourceProcessed,
 } from "@/services/ipc";
+import type { InboxSourceListFilters } from "@/types/source";
 
 const DEFAULT_INBOX_LIMIT = 50;
 
 export const sourceQueryKeys = {
   all: ["sources"] as const,
   inbox: () => [...sourceQueryKeys.all, "inbox"] as const,
-  inboxList: (limit: number) =>
-    [...sourceQueryKeys.inbox(), { limit }] as const,
+  inboxList: ({ limit, query }: InboxSourceListFilters) =>
+    [...sourceQueryKeys.inbox(), { limit, query }] as const,
 };
 
-export function useInboxSources(limit = DEFAULT_INBOX_LIMIT) {
+export function useInboxSources({
+  limit = DEFAULT_INBOX_LIMIT,
+  query,
+}: Partial<InboxSourceListFilters> = {}) {
+  const filters = {
+    limit,
+    query: query?.trim() || undefined,
+  };
+
   return useQuery({
-    queryKey: sourceQueryKeys.inboxList(limit),
-    queryFn: () => listInboxSources(limit),
+    queryKey: sourceQueryKeys.inboxList(filters),
+    queryFn: () => listInboxSources(filters),
   });
 }
 

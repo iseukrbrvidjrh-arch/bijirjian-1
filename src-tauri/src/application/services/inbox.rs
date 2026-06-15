@@ -7,7 +7,11 @@ use crate::{
 };
 
 pub trait InboxService: Send + Sync {
-    fn list_inbox_sources(&self, limit: usize) -> Result<Vec<Source>, AppError>;
+    fn list_inbox_sources(
+        &self,
+        query: Option<String>,
+        limit: usize,
+    ) -> Result<Vec<Source>, AppError>;
     fn mark_source_processed(&self, source_id: String) -> Result<Source, AppError>;
     fn mark_source_dismissed(&self, source_id: String) -> Result<Source, AppError>;
 }
@@ -43,10 +47,18 @@ where
     WorkspaceRepo: WorkspaceRepository + ?Sized,
     SourceRepo: SourceRepository + ?Sized,
 {
-    fn list_inbox_sources(&self, limit: usize) -> Result<Vec<Source>, AppError> {
+    fn list_inbox_sources(
+        &self,
+        query: Option<String>,
+        limit: usize,
+    ) -> Result<Vec<Source>, AppError> {
+        let query = query
+            .as_deref()
+            .map(str::trim)
+            .filter(|query| !query.is_empty());
         let workspace = self.workspace_repository.ensure_default_workspace()?;
         self.source_repository
-            .list_inbox_sources(&workspace.id, limit)
+            .list_inbox_sources(&workspace.id, query, limit)
     }
 
     fn mark_source_processed(&self, source_id: String) -> Result<Source, AppError> {
@@ -115,7 +127,7 @@ mod tests {
         assert!(processed.processed_at.is_some());
         assert_ne!(processed.updated_at, OLD_TIMESTAMP);
         assert!(service
-            .list_inbox_sources(50)
+            .list_inbox_sources(None, 50)
             .expect("inbox query should succeed")
             .is_empty());
         assert!(matches!(
@@ -146,7 +158,7 @@ mod tests {
         assert!(dismissed.processed_at.is_none());
         assert_ne!(dismissed.updated_at, OLD_TIMESTAMP);
         assert!(service
-            .list_inbox_sources(50)
+            .list_inbox_sources(None, 50)
             .expect("inbox query should succeed")
             .is_empty());
         assert!(matches!(
@@ -234,6 +246,37 @@ mod tests {
             source_repository.mark_source_dismissed(&workspace.id, &source.id),
             Err(AppError::Conflict(_))
         ));
+    }
+
+    #[test]
+    fn trims_search_queries_and_treats_blank_queries_as_absent() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let source_repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("default workspace should exist");
+        source_repository
+            .insert_text_source(&workspace.id, "Local First inbox source", None)
+            .expect("insert matching source");
+        source_repository
+            .insert_text_source(&workspace.id, "SQLite source", None)
+            .expect("insert non-matching source");
+        let service = DefaultInboxService::new(&workspace_repository, &source_repository);
+
+        let searched = service
+            .list_inbox_sources(Some("  LOCAL FIRST  ".to_owned()), 50)
+            .expect("search trimmed query");
+        let blank = service
+            .list_inbox_sources(Some(" \n\t ".to_owned()), 50)
+            .expect("treat blank query as absent");
+        let unfiltered = service
+            .list_inbox_sources(None, 50)
+            .expect("list without query");
+
+        assert_eq!(searched.len(), 1);
+        assert_eq!(searched[0].raw_content, "Local First inbox source");
+        assert_eq!(blank, unfiltered);
     }
 
     fn set_updated_at(database: &Database, source_id: &str, updated_at: &str) {

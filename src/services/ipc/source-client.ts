@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { SourceDto } from "@/types/source";
+import type {
+  InboxSourceListFilters,
+  SourceDto,
+} from "@/types/source";
 
 export async function captureTextSource(
   rawContent: string,
@@ -8,10 +11,14 @@ export async function captureTextSource(
   return invokeCommand<SourceDto>("capture_text_source", { rawContent });
 }
 
-export async function listInboxSources(
-  limit?: number,
-): Promise<SourceDto[]> {
-  return invokeCommand<SourceDto[]>("list_inbox_sources", { limit });
+export async function listInboxSources({
+  limit,
+  query,
+}: InboxSourceListFilters): Promise<SourceDto[]> {
+  return invokeCommand<SourceDto[]>("list_inbox_sources", {
+    limit,
+    query,
+  });
 }
 
 export async function markSourceProcessed(

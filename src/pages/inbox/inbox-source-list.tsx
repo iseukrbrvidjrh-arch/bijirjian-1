@@ -1,9 +1,12 @@
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   useInboxSources,
   useMarkSourceDismissed,
   useMarkSourceProcessed,
 } from "@/features/capture/source-queries";
+import { InboxSearchBar } from "@/features/inbox/inbox-search-bar";
 import { useCreateKnowledgeDraftFromLatestSummary } from "@/features/knowledge/knowledge-queries";
 import {
   useLatestSourceSummary,
@@ -12,34 +15,82 @@ import {
 import type { SourceDto } from "@/types/source";
 
 export function InboxSourceList() {
-  const inboxQuery = useInboxSources();
+  const [appliedQuery, setAppliedQuery] = useState<string>();
+  const inboxQuery = useInboxSources({ query: appliedQuery });
+  const isRefreshing = inboxQuery.isFetching && !inboxQuery.isPending;
 
-  if (inboxQuery.isPending) {
-    return <StatusMessage>Loading inbox...</StatusMessage>;
-  }
-
-  if (inboxQuery.isError) {
-    return (
-      <StatusMessage tone="error">
-        Could not load the inbox: {inboxQuery.error.message}
-      </StatusMessage>
-    );
-  }
-
-  if (inboxQuery.data.length === 0) {
-    return <StatusMessage>Your inbox is empty.</StatusMessage>;
+  function updateQuery(query?: string) {
+    const normalizedQuery = query?.trim();
+    setAppliedQuery(normalizedQuery || undefined);
   }
 
   return (
-    <div className="space-y-3">
-      <h2 className="text-sm font-medium text-muted-foreground">
-        Unprocessed sources
-      </h2>
-      <ul className="space-y-3">
-        {inboxQuery.data.map((source) => (
-          <InboxSourceItem key={source.id} source={source} />
-        ))}
-      </ul>
+    <div className="space-y-4">
+      <InboxSearchBar
+        query={appliedQuery}
+        isRefreshing={isRefreshing}
+        onQueryChange={updateQuery}
+        onRefresh={() => void inboxQuery.refetch()}
+      />
+
+      {inboxQuery.isPending && (
+        <StatusMessage>Loading inbox...</StatusMessage>
+      )}
+
+      {inboxQuery.isError && (
+        <StatusMessage tone="error">
+          <span>
+            Could not load the inbox: {inboxQuery.error.message}
+          </span>
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => void inboxQuery.refetch()}
+          >
+            Retry
+          </Button>
+        </StatusMessage>
+      )}
+
+      {inboxQuery.isSuccess && inboxQuery.data.length === 0 && (
+        <StatusMessage>
+          <span>
+            {appliedQuery
+              ? `No inbox sources match "${appliedQuery}".`
+              : "Your inbox is empty."}
+          </span>
+          {appliedQuery && (
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => updateQuery(undefined)}
+            >
+              Clear search
+            </Button>
+          )}
+        </StatusMessage>
+      )}
+
+      {inboxQuery.isSuccess && inboxQuery.data.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Unprocessed sources
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {inboxQuery.data.length} result
+              {inboxQuery.data.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <ul className="space-y-3">
+            {inboxQuery.data.map((source) => (
+              <InboxSourceItem key={source.id} source={source} />
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -231,16 +282,16 @@ function StatusMessage({
   tone?: "muted" | "error";
 }) {
   return (
-    <p
+    <div
       className={
         tone === "error"
-          ? "rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          : "rounded-lg border bg-background p-4 text-sm text-muted-foreground"
+          ? "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+          : "flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-4 text-sm text-muted-foreground"
       }
       role={tone === "error" ? "alert" : "status"}
     >
       {children}
-    </p>
+    </div>
   );
 }
 

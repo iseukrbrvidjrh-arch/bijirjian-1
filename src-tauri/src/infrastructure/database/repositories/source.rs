@@ -84,10 +84,12 @@ impl SourceRepository for SqliteSourceRepository<'_> {
     fn list_inbox_sources(
         &self,
         workspace_id: &str,
+        query: Option<&str>,
         limit: usize,
     ) -> Result<Vec<Source>, AppError> {
         let limit = i64::try_from(limit)
             .map_err(|_| AppError::Validation("inbox limit is too large".to_owned()))?;
+        let query_pattern = query.map(search_pattern);
 
         self.database.with_connection(|connection| {
             let mut statement = connection.prepare(
@@ -109,14 +111,23 @@ impl SourceRepository for SqliteSourceRepository<'_> {
                 WHERE workspace_id = ?1
                   AND inbox_status = ?2
                   AND deleted_at IS NULL
+                  AND (
+                      ?3 IS NULL
+                      OR LOWER(raw_content) LIKE ?3 ESCAPE '!'
+                  )
                 ORDER BY captured_at DESC
-                LIMIT ?3
+                LIMIT ?4
                 ",
             )?;
 
             let sources = statement
                 .query_map(
-                    params![workspace_id, InboxStatus::Unprocessed.as_str(), limit],
+                    params![
+                        workspace_id,
+                        InboxStatus::Unprocessed.as_str(),
+                        query_pattern,
+                        limit
+                    ],
                     map_source,
                 )?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -254,6 +265,16 @@ impl SqliteSourceRepository<'_> {
     }
 }
 
+fn search_pattern(query: &str) -> String {
+    let escaped = query
+        .to_lowercase()
+        .replace('!', "!!")
+        .replace('%', "!%")
+        .replace('_', "!_");
+
+    format!("%{escaped}%")
+}
+
 fn map_source(row: &rusqlite::Row<'_>) -> rusqlite::Result<Source> {
     let source_type: String = row.get(2)?;
     let inbox_status: String = row.get(6)?;
@@ -356,4 +377,221 @@ fn current_timestamp() -> String {
 
 fn content_hash(raw_content: &str) -> String {
     format!("{:x}", Sha256::digest(raw_content.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{params, Connection};
+
+    use super::SqliteSourceRepository;
+    use crate::{
+        domain::{
+            ports::{SourceRepository, WorkspaceRepository},
+            InboxStatus,
+        },
+        infrastructure::database::{repositories::SqliteWorkspaceRepository, Database},
+    };
+
+    const OLD_TIMESTAMP: &str = "2026-06-14T01:00:00.000Z";
+    const NEW_TIMESTAMP: &str = "2026-06-14T02:00:00.000Z";
+
+    #[test]
+    fn searches_raw_content_case_insensitively_and_escapes_wildcards() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let text_match = repository
+            .insert_text_source(&workspace.id, "Local First source", None)
+            .expect("insert text match");
+        let percent_match = repository
+            .insert_text_source(&workspace.id, "Progress is 100% complete", None)
+            .expect("insert percent match");
+        repository
+            .insert_text_source(&workspace.id, "Progress is 100X complete", None)
+            .expect("insert percent decoy");
+        let underscore_match = repository
+            .insert_text_source(&workspace.id, "snake_case source", None)
+            .expect("insert underscore match");
+        repository
+            .insert_text_source(&workspace.id, "snakeXcase source", None)
+            .expect("insert underscore decoy");
+
+        assert_eq!(
+            repository
+                .list_inbox_sources(&workspace.id, Some("LOCAL FIRST"), 50)
+                .expect("search case-insensitively"),
+            vec![text_match]
+        );
+        assert_eq!(
+            repository
+                .list_inbox_sources(&workspace.id, Some("100%"), 50)
+                .expect("search literal percent"),
+            vec![percent_match]
+        );
+        assert_eq!(
+            repository
+                .list_inbox_sources(&workspace.id, Some("snake_case"), 50)
+                .expect("search literal underscore"),
+            vec![underscore_match]
+        );
+        assert!(repository
+            .list_inbox_sources(&workspace.id, Some("missing"), 50)
+            .expect("search missing content")
+            .is_empty());
+    }
+
+    #[test]
+    fn search_preserves_inbox_scope_workspace_order_limit_and_source_data() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "other-search-workspace");
+
+        let older = repository
+            .insert_text_source(&workspace.id, "Search needle older", None)
+            .expect("insert older source");
+        let newer = repository
+            .insert_text_source(&workspace.id, "Search needle newer", None)
+            .expect("insert newer source");
+        let processed = repository
+            .insert_text_source(&workspace.id, "Search needle processed", None)
+            .expect("insert processed source");
+        let dismissed = repository
+            .insert_text_source(&workspace.id, "Search needle dismissed", None)
+            .expect("insert dismissed source");
+        let deleted = repository
+            .insert_text_source(&workspace.id, "Search needle deleted", None)
+            .expect("insert deleted source");
+        repository
+            .insert_text_source("other-search-workspace", "Search needle elsewhere", None)
+            .expect("insert cross-workspace source");
+
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE sources SET captured_at = ?1 WHERE id = ?2",
+                    params![OLD_TIMESTAMP, older.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET captured_at = ?1 WHERE id = ?2",
+                    params![NEW_TIMESTAMP, newer.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET inbox_status = ?1 WHERE id = ?2",
+                    params![InboxStatus::Processed.as_str(), processed.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET inbox_status = ?1 WHERE id = ?2",
+                    params![InboxStatus::Dismissed.as_str(), dismissed.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET deleted_at = ?1 WHERE id = ?2",
+                    params![NEW_TIMESTAMP, deleted.id],
+                )?;
+                Ok(())
+            })
+            .expect("prepare inbox search states");
+        let older_before = repository
+            .find_source(&workspace.id, &older.id)
+            .expect("read source before search");
+
+        let matches = repository
+            .list_inbox_sources(&workspace.id, Some("needle"), 50)
+            .expect("search inbox scope");
+        let limited = repository
+            .list_inbox_sources(&workspace.id, Some("needle"), 1)
+            .expect("limit search results");
+        let older_after = repository
+            .find_source(&workspace.id, &older.id)
+            .expect("read source after search");
+
+        assert_eq!(
+            matches
+                .iter()
+                .map(|source| source.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![newer.id.as_str(), older.id.as_str()]
+        );
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].id, newer.id);
+        assert_eq!(older_before, older_after);
+    }
+
+    #[test]
+    fn lifecycle_transitions_remove_sources_from_matching_search_results() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let processed = repository
+            .insert_text_source(&workspace.id, "Lifecycle needle processed", None)
+            .expect("insert processed candidate");
+        let dismissed = repository
+            .insert_text_source(&workspace.id, "Lifecycle needle dismissed", None)
+            .expect("insert dismissed candidate");
+
+        assert_eq!(
+            repository
+                .list_inbox_sources(&workspace.id, Some("lifecycle needle"), 50)
+                .expect("list matching sources")
+                .len(),
+            2
+        );
+
+        repository
+            .mark_source_processed(&workspace.id, &processed.id)
+            .expect("mark source processed");
+        let after_processed = repository
+            .list_inbox_sources(&workspace.id, Some("lifecycle needle"), 50)
+            .expect("list after processed transition");
+        assert_eq!(after_processed.len(), 1);
+        assert_eq!(after_processed[0].id, dismissed.id);
+
+        repository
+            .mark_source_dismissed(&workspace.id, &dismissed.id)
+            .expect("mark source dismissed");
+        assert!(repository
+            .list_inbox_sources(&workspace.id, Some("lifecycle needle"), 50)
+            .expect("list after dismissed transition")
+            .is_empty());
+    }
+
+    fn seed_workspace(database: &Database, workspace_id: &str) {
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "
+                    INSERT INTO workspaces (
+                        id,
+                        name,
+                        description,
+                        created_at,
+                        updated_at,
+                        archived_at
+                    )
+                    VALUES (?1, ?2, NULL, ?3, ?3, NULL)
+                    ",
+                    params![
+                        workspace_id,
+                        format!("Workspace {workspace_id}"),
+                        OLD_TIMESTAMP
+                    ],
+                )?;
+                Ok(())
+            })
+            .expect("insert workspace");
+    }
+
+    fn test_database() -> Database {
+        Database::from_connection(Connection::open_in_memory().expect("open in-memory database"))
+            .expect("initialize test database")
+    }
 }

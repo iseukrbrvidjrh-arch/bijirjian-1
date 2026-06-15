@@ -12,6 +12,7 @@ const DEFAULT_INBOX_LIMIT: usize = 50;
 
 #[tauri::command]
 pub fn list_inbox_sources(
+    query: Option<String>,
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SourceDto>, AppError> {
@@ -20,7 +21,7 @@ pub fn list_inbox_sources(
     let service = DefaultInboxService::new(&workspace_repository, &source_repository);
 
     service
-        .list_inbox_sources(limit.unwrap_or(DEFAULT_INBOX_LIMIT))
+        .list_inbox_sources(query, limit.unwrap_or(DEFAULT_INBOX_LIMIT))
         .map(|sources| sources.into_iter().map(Into::into).collect())
 }
 

@@ -20,3 +20,8 @@ export interface SourceDto {
   updatedAt: string;
   deletedAt: string | null;
 }
+
+export interface InboxSourceListFilters {
+  limit: number;
+  query?: string;
+}

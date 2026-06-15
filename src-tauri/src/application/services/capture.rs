@@ -165,7 +165,7 @@ mod tests {
 
         let service = DefaultInboxService::new(&workspace_repository, &source_repository);
         let sources = service
-            .list_inbox_sources(50)
+            .list_inbox_sources(None, 50)
             .expect("inbox sources should be listed");
 
         assert_eq!(sources.len(), 1);
@@ -203,7 +203,7 @@ mod tests {
             .expect("test capture timestamps should be updated");
 
         let sources = source_repository
-            .list_inbox_sources(&workspace.id, 50)
+            .list_inbox_sources(&workspace.id, None, 50)
             .expect("inbox sources should be listed");
 
         assert_eq!(sources.len(), 2);

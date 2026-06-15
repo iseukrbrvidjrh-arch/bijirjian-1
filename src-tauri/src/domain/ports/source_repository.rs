@@ -8,8 +8,12 @@ pub trait SourceRepository: Send + Sync {
         metadata_json: Option<&str>,
     ) -> Result<Source, AppError>;
 
-    fn list_inbox_sources(&self, workspace_id: &str, limit: usize)
-        -> Result<Vec<Source>, AppError>;
+    fn list_inbox_sources(
+        &self,
+        workspace_id: &str,
+        query: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Source>, AppError>;
 
     fn find_source(&self, workspace_id: &str, source_id: &str) -> Result<Source, AppError>;
 

@@ -31,6 +31,8 @@ pub fn run() {
             commands::knowledge::create_knowledge_node,
             commands::knowledge::create_knowledge_draft_from_latest_summary,
             commands::knowledge::list_knowledge_nodes,
+            commands::obsidian_settings::get_obsidian_settings,
+            commands::obsidian_settings::save_obsidian_settings,
             commands::prompt::get_default_prompt,
             commands::prompt::list_prompt_versions,
             commands::prompt::create_prompt_version,

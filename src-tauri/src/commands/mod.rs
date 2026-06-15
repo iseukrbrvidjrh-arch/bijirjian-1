@@ -3,5 +3,6 @@ pub(crate) mod capture;
 mod dto;
 pub(crate) mod inbox;
 pub(crate) mod knowledge;
+pub(crate) mod obsidian_settings;
 pub(crate) mod prompt;
 pub(crate) mod summary;

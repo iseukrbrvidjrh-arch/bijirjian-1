@@ -26,3 +26,7 @@ export {
   createKnowledgeNode,
   listKnowledgeNodes,
 } from "./knowledge-client";
+export {
+  getObsidianSettings,
+  saveObsidianSettings,
+} from "./obsidian-settings-client";

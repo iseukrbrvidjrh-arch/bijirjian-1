@@ -53,6 +53,12 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../../migrations/0007_knowledge_node_ai_run_origin.sql"),
         checksum: "c5fa9ff84dda0e85d6b964c086c9fb3d1c54687ea2e544af7553b6f2d285ddf4",
     },
+    Migration {
+        version: 8,
+        name: "obsidian_settings",
+        sql: include_str!("../../../migrations/0008_obsidian_settings.sql"),
+        checksum: "ee116c850d5ba844f8b181e04162c995483a1d02c966e4dbfe5e9355f92ffcde",
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), AppError> {
@@ -245,7 +251,11 @@ mod tests {
             column_exists(&connection, "knowledge_nodes", "ai_run_id"),
             Some("ai_run_id".into())
         );
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(
+            table_exists(&connection, "obsidian_settings"),
+            Some("obsidian_settings".into())
+        );
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -278,7 +288,26 @@ mod tests {
             column_exists(&connection, "knowledge_nodes", "ai_run_id"),
             Some("ai_run_id".into())
         );
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(
+            table_exists(&connection, "obsidian_settings"),
+            Some("obsidian_settings".into())
+        );
+        assert_eq!(migration_count(&connection), 8);
+    }
+
+    #[test]
+    fn applies_obsidian_settings_to_an_existing_version_seven_database() {
+        let mut connection = Connection::open_in_memory().expect("open in-memory database");
+        run_migrations(&mut connection, &MIGRATIONS[..7]).expect("run through migration 7");
+        assert_eq!(table_exists(&connection, "obsidian_settings"), None);
+
+        run(&mut connection).expect("apply Obsidian settings migration");
+
+        assert_eq!(
+            table_exists(&connection, "obsidian_settings"),
+            Some("obsidian_settings".into())
+        );
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -360,7 +389,7 @@ mod tests {
             )
             .expect("read migrated manual node origin");
         assert!(existing_origin.is_none());
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -375,7 +404,7 @@ mod tests {
             table_exists(&connection, "knowledge_nodes"),
             Some("knowledge_nodes".into())
         );
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -387,7 +416,7 @@ mod tests {
         run(&mut connection).expect("apply AI runs migration");
 
         assert_eq!(table_exists(&connection, "ai_runs"), Some("ai_runs".into()));
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -442,7 +471,7 @@ mod tests {
             table_exists(&connection, "prompt_versions"),
             Some("prompt_versions".into())
         );
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -479,7 +508,7 @@ mod tests {
             )
             .expect("read migrated default model");
         assert_eq!(default_model, "deepseek-v4-flash");
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
     }
 
     #[test]
@@ -521,7 +550,7 @@ mod tests {
             .execute(
                 "
                 INSERT INTO _schema_migrations (version, name, checksum, applied_at)
-                VALUES (8, 'future_migration', 'future-checksum', '2026-06-14T00:00:00Z')
+                VALUES (9, 'future_migration', 'future-checksum', '2026-06-15T00:00:00Z')
                 ",
                 [],
             )
@@ -605,7 +634,7 @@ mod tests {
         }
 
         let connection = Connection::open(&database_path).expect("reopen temporary database");
-        assert_eq!(migration_count(&connection), 7);
+        assert_eq!(migration_count(&connection), 8);
         assert_eq!(
             table_exists(&connection, "workspaces"),
             Some("workspaces".into())
@@ -628,6 +657,10 @@ mod tests {
         assert_eq!(
             column_exists(&connection, "knowledge_nodes", "ai_run_id"),
             Some("ai_run_id".into())
+        );
+        assert_eq!(
+            table_exists(&connection, "obsidian_settings"),
+            Some("obsidian_settings".into())
         );
 
         drop(connection);

@@ -101,6 +101,14 @@ pub struct KnowledgeNode {
     pub archived_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KnowledgeStatusCounts {
+    pub total: usize,
+    pub proposed: usize,
+    pub accepted: usize,
+    pub archived: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{KnowledgeStatus, KnowledgeType};

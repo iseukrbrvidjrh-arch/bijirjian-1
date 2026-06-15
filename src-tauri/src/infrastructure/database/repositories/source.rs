@@ -136,6 +136,25 @@ impl SourceRepository for SqliteSourceRepository<'_> {
         })
     }
 
+    fn count_inbox_sources(&self, workspace_id: &str) -> Result<usize, AppError> {
+        self.database.with_connection(|connection| {
+            let count = connection.query_row(
+                "
+                SELECT COUNT(*)
+                FROM sources
+                WHERE workspace_id = ?1
+                  AND inbox_status = ?2
+                  AND deleted_at IS NULL
+                ",
+                params![workspace_id, InboxStatus::Unprocessed.as_str()],
+                |row| row.get::<_, i64>(0),
+            )?;
+
+            usize::try_from(count)
+                .map_err(|_| AppError::State("inbox source count is invalid".to_owned()))
+        })
+    }
+
     fn find_source(&self, workspace_id: &str, source_id: &str) -> Result<Source, AppError> {
         self.database.with_connection(|connection| {
             if let Some(source) =
@@ -562,6 +581,63 @@ mod tests {
             .list_inbox_sources(&workspace.id, Some("lifecycle needle"), 50)
             .expect("list after dismissed transition")
             .is_empty());
+    }
+
+    #[test]
+    fn counts_only_current_workspace_unprocessed_non_deleted_sources() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "count-other-workspace");
+        repository
+            .insert_text_source(&workspace.id, "Count this source", None)
+            .expect("insert unprocessed source");
+        let processed = repository
+            .insert_text_source(&workspace.id, "Processed source", None)
+            .expect("insert processed source");
+        let dismissed = repository
+            .insert_text_source(&workspace.id, "Dismissed source", None)
+            .expect("insert dismissed source");
+        let deleted = repository
+            .insert_text_source(&workspace.id, "Deleted source", None)
+            .expect("insert deleted source");
+        repository
+            .insert_text_source("count-other-workspace", "Other workspace source", None)
+            .expect("insert other workspace source");
+
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE sources SET inbox_status = ?1 WHERE id = ?2",
+                    params![InboxStatus::Processed.as_str(), processed.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET inbox_status = ?1 WHERE id = ?2",
+                    params![InboxStatus::Dismissed.as_str(), dismissed.id],
+                )?;
+                connection.execute(
+                    "UPDATE sources SET deleted_at = ?1 WHERE id = ?2",
+                    params![NEW_TIMESTAMP, deleted.id],
+                )?;
+                Ok(())
+            })
+            .expect("prepare source count states");
+
+        assert_eq!(
+            repository
+                .count_inbox_sources(&workspace.id)
+                .expect("count inbox sources"),
+            1
+        );
+        assert_eq!(
+            repository
+                .count_inbox_sources("count-other-workspace")
+                .expect("count other workspace sources"),
+            1
+        );
     }
 
     fn seed_workspace(database: &Database, workspace_id: &str) {

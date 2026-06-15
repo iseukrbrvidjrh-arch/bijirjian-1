@@ -15,6 +15,8 @@ pub trait SourceRepository: Send + Sync {
         limit: usize,
     ) -> Result<Vec<Source>, AppError>;
 
+    fn count_inbox_sources(&self, workspace_id: &str) -> Result<usize, AppError>;
+
     fn find_source(&self, workspace_id: &str, source_id: &str) -> Result<Source, AppError>;
 
     fn mark_source_processed(

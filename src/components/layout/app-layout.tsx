@@ -1,4 +1,11 @@
-import { Brain, Inbox, Library, Menu, Settings } from "lucide-react";
+import {
+  Brain,
+  Inbox,
+  LayoutDashboard,
+  Library,
+  Menu,
+  Settings,
+} from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -6,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useAppShellStore } from "@/stores/app-shell-store";
 
 const navigation = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/knowledge", label: "Knowledge", icon: Library },
   { to: "/settings", label: "Settings", icon: Settings },

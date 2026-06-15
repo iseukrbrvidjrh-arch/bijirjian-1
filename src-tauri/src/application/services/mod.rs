@@ -1,5 +1,6 @@
 mod ai_provider;
 mod capture;
+mod dashboard;
 mod export;
 mod feedback;
 mod inbox;
@@ -14,6 +15,7 @@ pub use ai_provider::{
     ProviderConnectionResult,
 };
 pub use capture::{CaptureService, DefaultCaptureService};
+pub use dashboard::{DashboardService, DashboardSummary, DefaultDashboardService};
 pub use export::{DefaultExportService, ExportService};
 pub use feedback::FeedbackService;
 pub use inbox::{DefaultInboxService, InboxService};

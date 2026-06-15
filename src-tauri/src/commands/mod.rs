@@ -1,5 +1,6 @@
 pub(crate) mod ai_provider;
 pub(crate) mod capture;
+pub(crate) mod dashboard;
 mod dto;
 pub(crate) mod export;
 pub(crate) mod inbox;

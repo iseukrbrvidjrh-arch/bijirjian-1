@@ -9,6 +9,7 @@ export {
   markSourceDismissed,
   markSourceProcessed,
 } from "./source-client";
+export { getDashboardSummary } from "./dashboard-client";
 export {
   createPromptVersion,
   getDefaultPrompt,

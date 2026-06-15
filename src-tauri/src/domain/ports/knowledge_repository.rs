@@ -1,5 +1,5 @@
 use crate::{
-    domain::{KnowledgeNode, KnowledgeStatus, KnowledgeType},
+    domain::{KnowledgeNode, KnowledgeStatus, KnowledgeStatusCounts, KnowledgeType},
     error::AppError,
 };
 
@@ -43,4 +43,6 @@ pub trait KnowledgeRepository: Send + Sync {
         query: Option<&str>,
         limit: usize,
     ) -> Result<Vec<KnowledgeNode>, AppError>;
+
+    fn count_nodes_by_status(&self, workspace_id: &str) -> Result<KnowledgeStatusCounts, AppError>;
 }

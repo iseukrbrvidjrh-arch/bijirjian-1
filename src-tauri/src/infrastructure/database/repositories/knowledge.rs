@@ -5,7 +5,10 @@ use rusqlite::{params, types::Type, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
 
 use crate::{
-    domain::{ports::KnowledgeRepository, KnowledgeNode, KnowledgeStatus, KnowledgeType},
+    domain::{
+        ports::KnowledgeRepository, KnowledgeNode, KnowledgeStatus, KnowledgeStatusCounts,
+        KnowledgeType,
+    },
     error::AppError,
     infrastructure::database::Database,
 };
@@ -269,6 +272,48 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
             Ok(nodes)
         })
     }
+
+    fn count_nodes_by_status(&self, workspace_id: &str) -> Result<KnowledgeStatusCounts, AppError> {
+        self.database.with_connection(|connection| {
+            let counts = connection.query_row(
+                "
+                SELECT
+                    COUNT(*),
+                    COUNT(CASE WHEN status = ?2 THEN 1 END),
+                    COUNT(CASE WHEN status = ?3 THEN 1 END),
+                    COUNT(CASE WHEN status = ?4 THEN 1 END)
+                FROM knowledge_nodes
+                WHERE workspace_id = ?1
+                ",
+                params![
+                    workspace_id,
+                    KnowledgeStatus::Proposed.as_str(),
+                    KnowledgeStatus::Accepted.as_str(),
+                    KnowledgeStatus::Archived.as_str(),
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )?;
+
+            Ok(KnowledgeStatusCounts {
+                total: valid_count(counts.0, "total")?,
+                proposed: valid_count(counts.1, "proposed")?,
+                accepted: valid_count(counts.2, "accepted")?,
+                archived: valid_count(counts.3, "archived")?,
+            })
+        })
+    }
+}
+
+fn valid_count(value: i64, label: &str) -> Result<usize, AppError> {
+    usize::try_from(value)
+        .map_err(|_| AppError::State(format!("{label} knowledge node count is invalid")))
 }
 
 fn search_pattern(query: &str) -> String {

@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  capturePdfSource,
   captureTextSource,
   listInboxSources,
   markSourceDismissed,
@@ -41,6 +42,19 @@ export function useCaptureTextSource() {
 
   return useMutation({
     mutationFn: captureTextSource,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceQueryKeys.inbox(),
+      });
+    },
+  });
+}
+
+export function useCapturePdfSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: capturePdfSource,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: sourceQueryKeys.inbox(),

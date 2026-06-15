@@ -4,6 +4,7 @@ export {
   testAiProviderConnection,
 } from "./ai-provider-client";
 export {
+  capturePdfSource,
   captureTextSource,
   listInboxSources,
   markSourceDismissed,

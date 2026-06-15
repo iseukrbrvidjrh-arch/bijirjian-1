@@ -28,57 +28,21 @@ impl SourceRepository for SqliteSourceRepository<'_> {
         raw_content: &str,
         metadata_json: Option<&str>,
     ) -> Result<Source, AppError> {
-        let id = Uuid::new_v4().to_string();
-        let now = current_timestamp();
-        let content_hash = content_hash(raw_content);
-        let metadata_json = metadata_json.unwrap_or("{}").to_owned();
+        self.insert_source(
+            workspace_id,
+            SourceType::Text,
+            raw_content,
+            metadata_json.unwrap_or("{}"),
+        )
+    }
 
-        self.database.with_connection(|connection| {
-            connection.execute(
-                "
-                INSERT INTO sources (
-                    id,
-                    workspace_id,
-                    source_type,
-                    raw_content,
-                    content_hash,
-                    metadata_json,
-                    inbox_status,
-                    captured_at,
-                    processed_at,
-                    created_at,
-                    updated_at,
-                    deleted_at
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?8, ?8, NULL)
-                ",
-                params![
-                    id,
-                    workspace_id,
-                    SourceType::Text.as_str(),
-                    raw_content,
-                    content_hash,
-                    metadata_json,
-                    InboxStatus::Unprocessed.as_str(),
-                    now,
-                ],
-            )?;
-
-            Ok(Source {
-                id,
-                workspace_id: workspace_id.to_owned(),
-                source_type: SourceType::Text,
-                raw_content: raw_content.to_owned(),
-                content_hash,
-                metadata_json: Some(metadata_json),
-                inbox_status: InboxStatus::Unprocessed,
-                captured_at: now.clone(),
-                processed_at: None,
-                created_at: now.clone(),
-                updated_at: now,
-                deleted_at: None,
-            })
-        })
+    fn insert_pdf_source(
+        &self,
+        workspace_id: &str,
+        extracted_text: &str,
+        metadata_json: &str,
+    ) -> Result<Source, AppError> {
+        self.insert_source(workspace_id, SourceType::Pdf, extracted_text, metadata_json)
     }
 
     fn list_inbox_sources(
@@ -206,6 +170,65 @@ impl SourceRepository for SqliteSourceRepository<'_> {
 }
 
 impl SqliteSourceRepository<'_> {
+    fn insert_source(
+        &self,
+        workspace_id: &str,
+        source_type: SourceType,
+        raw_content: &str,
+        metadata_json: &str,
+    ) -> Result<Source, AppError> {
+        let id = Uuid::new_v4().to_string();
+        let now = current_timestamp();
+        let content_hash = content_hash(raw_content);
+        let metadata_json = metadata_json.to_owned();
+
+        self.database.with_connection(|connection| {
+            connection.execute(
+                "
+                INSERT INTO sources (
+                    id,
+                    workspace_id,
+                    source_type,
+                    raw_content,
+                    content_hash,
+                    metadata_json,
+                    inbox_status,
+                    captured_at,
+                    processed_at,
+                    created_at,
+                    updated_at,
+                    deleted_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?8, ?8, NULL)
+                ",
+                params![
+                    id,
+                    workspace_id,
+                    source_type.as_str(),
+                    raw_content,
+                    content_hash,
+                    metadata_json,
+                    InboxStatus::Unprocessed.as_str(),
+                    now,
+                ],
+            )?;
+
+            Ok(Source {
+                id,
+                workspace_id: workspace_id.to_owned(),
+                source_type,
+                raw_content: raw_content.to_owned(),
+                content_hash,
+                metadata_json: Some(metadata_json),
+                inbox_status: InboxStatus::Unprocessed,
+                captured_at: now.clone(),
+                processed_at: None,
+                created_at: now.clone(),
+                updated_at: now,
+                deleted_at: None,
+            })
+        })
+    }
     fn transition_source(
         &self,
         workspace_id: &str,
@@ -401,18 +424,50 @@ fn content_hash(raw_content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use rusqlite::{params, Connection};
+    use sha2::{Digest, Sha256};
 
     use super::SqliteSourceRepository;
     use crate::{
         domain::{
             ports::{SourceRepository, WorkspaceRepository},
-            InboxStatus,
+            InboxStatus, SourceType,
         },
         infrastructure::database::{repositories::SqliteWorkspaceRepository, Database},
     };
 
     const OLD_TIMESTAMP: &str = "2026-06-14T01:00:00.000Z";
     const NEW_TIMESTAMP: &str = "2026-06-14T02:00:00.000Z";
+
+    #[test]
+    fn inserts_pdf_source_with_extracted_text_metadata_and_inbox_defaults() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteSourceRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let metadata = r#"{"originalFileName":"guide.pdf","fileSize":128,"extractedTextLength":18,"capturedVia":"pdf"}"#;
+
+        let source = repository
+            .insert_pdf_source(&workspace.id, "Extracted PDF text", metadata)
+            .expect("insert PDF source");
+
+        assert_eq!(source.source_type, SourceType::Pdf);
+        assert_eq!(source.inbox_status, InboxStatus::Unprocessed);
+        assert_eq!(source.raw_content, "Extracted PDF text");
+        assert_eq!(source.metadata_json.as_deref(), Some(metadata));
+        assert_eq!(
+            source.content_hash,
+            format!("{:x}", Sha256::digest(b"Extracted PDF text"))
+        );
+        assert!(source.processed_at.is_none());
+        assert_eq!(
+            repository
+                .list_inbox_sources(&workspace.id, Some("pdf text"), 50)
+                .expect("find PDF source in inbox"),
+            vec![source]
+        );
+    }
 
     #[test]
     fn searches_raw_content_case_insensitively_and_escapes_wildcards() {

@@ -7,6 +7,7 @@ mod inbox;
 mod knowledge;
 mod knowledge_draft;
 mod obsidian_settings;
+mod pdf_capture;
 mod prompt;
 mod summary;
 
@@ -24,5 +25,6 @@ pub use knowledge_draft::{DefaultKnowledgeDraftService, KnowledgeDraftService};
 pub use obsidian_settings::{
     DefaultObsidianSettingsService, ObsidianSettingsService, ObsidianSettingsSummary,
 };
+pub use pdf_capture::{DefaultPdfCaptureService, PdfCaptureService};
 pub use prompt::{DefaultPromptDetails, DefaultPromptService, PromptService};
 pub use summary::{DefaultSummaryService, SourceSummary, SummaryService};

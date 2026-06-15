@@ -37,3 +37,34 @@ impl From<Source> for SourceDto {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SourceDto;
+    use crate::domain::{InboxStatus, Source, SourceType};
+
+    #[test]
+    fn pdf_source_dto_uses_camel_case_and_pdf_source_type() {
+        let dto = SourceDto::from(Source {
+            id: "source-1".to_owned(),
+            workspace_id: "workspace-1".to_owned(),
+            source_type: SourceType::Pdf,
+            raw_content: "Extracted PDF text".to_owned(),
+            content_hash: "hash".to_owned(),
+            metadata_json: Some(r#"{"originalFileName":"guide.pdf"}"#.to_owned()),
+            inbox_status: InboxStatus::Unprocessed,
+            captured_at: "2026-06-15T00:00:00.000Z".to_owned(),
+            processed_at: None,
+            created_at: "2026-06-15T00:00:00.000Z".to_owned(),
+            updated_at: "2026-06-15T00:00:00.000Z".to_owned(),
+            deleted_at: None,
+        });
+
+        let value = serde_json::to_value(dto).expect("serialize source DTO");
+
+        assert_eq!(value["sourceType"], "pdf");
+        assert_eq!(value["workspaceId"], "workspace-1");
+        assert_eq!(value["metadataJson"], r#"{"originalFileName":"guide.pdf"}"#);
+        assert!(value.get("source_type").is_none());
+    }
+}

@@ -284,7 +284,7 @@ mod tests {
                 AiRunRepository, CredentialStore, PromptRepository, ProviderRouter,
                 ProviderSettingsRepository, SourceRepository, WorkspaceRepository,
             },
-            AiRunStatus, InboxStatus, ProviderModel, ProviderType,
+            AiRunStatus, InboxStatus, ProviderModel, ProviderType, SourceType,
         },
         error::AppError,
         infrastructure::database::{
@@ -297,7 +297,7 @@ mod tests {
     };
 
     #[test]
-    fn summarizes_a_source_with_the_active_prompt_and_default_model() {
+    fn summarizes_a_pdf_source_with_the_active_prompt_and_default_model() {
         let database = test_database();
         let workspace_repository = SqliteWorkspaceRepository::new(&database);
         let source_repository = SqliteSourceRepository::new(&database);
@@ -308,8 +308,12 @@ mod tests {
             .ensure_default_workspace()
             .expect("create default workspace");
         let source = source_repository
-            .insert_text_source(&workspace.id, "Untrusted source instructions", None)
-            .expect("insert source");
+            .insert_pdf_source(
+                &workspace.id,
+                "Untrusted source instructions",
+                r#"{"originalFileName":"instructions.pdf","capturedVia":"pdf"}"#,
+            )
+            .expect("insert PDF source");
         let prompt = prompt_repository
             .find_by_key("source_summary")
             .expect("read default prompt")
@@ -373,6 +377,7 @@ mod tests {
              — SOURCE END —"
         );
         assert_eq!(before, after);
+        assert_eq!(after.source_type, SourceType::Pdf);
         assert_eq!(after.inbox_status, InboxStatus::Unprocessed);
         assert!(after.processed_at.is_none());
         assert_eq!(ai_run.status, AiRunStatus::Succeeded);

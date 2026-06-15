@@ -8,6 +8,13 @@ pub trait SourceRepository: Send + Sync {
         metadata_json: Option<&str>,
     ) -> Result<Source, AppError>;
 
+    fn insert_pdf_source(
+        &self,
+        workspace_id: &str,
+        extracted_text: &str,
+        metadata_json: &str,
+    ) -> Result<Source, AppError>;
+
     fn list_inbox_sources(
         &self,
         workspace_id: &str,

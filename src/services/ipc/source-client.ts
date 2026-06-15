@@ -11,6 +11,12 @@ export async function captureTextSource(
   return invokeCommand<SourceDto>("capture_text_source", { rawContent });
 }
 
+export async function capturePdfSource(
+  filePath: string,
+): Promise<SourceDto> {
+  return invokeCommand<SourceDto>("capture_pdf_source", { filePath });
+}
+
 export async function listInboxSources({
   limit,
   query,

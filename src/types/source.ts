@@ -1,4 +1,4 @@
-export type SourceType = "text";
+export type SourceType = "text" | "pdf";
 
 export type InboxStatus =
   | "unprocessed"
@@ -24,4 +24,11 @@ export interface SourceDto {
 export interface InboxSourceListFilters {
   limit: number;
   query?: string;
+}
+
+export interface PdfSourceMetadata {
+  originalFileName: string;
+  fileSize: number;
+  extractedTextLength: number;
+  capturedVia: "pdf";
 }

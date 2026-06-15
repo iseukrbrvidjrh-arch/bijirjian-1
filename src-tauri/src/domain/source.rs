@@ -3,12 +3,14 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceType {
     Text,
+    Pdf,
 }
 
 impl SourceType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",
+            Self::Pdf => "pdf",
         }
     }
 }
@@ -19,6 +21,7 @@ impl TryFrom<&str> for SourceType {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "text" => Ok(Self::Text),
+            "pdf" => Ok(Self::Pdf),
             _ => Err(format!("unsupported source type: {value}")),
         }
     }
@@ -83,4 +86,18 @@ pub struct Source {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceType;
+
+    #[test]
+    fn parses_and_serializes_supported_source_types() {
+        assert_eq!(SourceType::try_from("text"), Ok(SourceType::Text));
+        assert_eq!(SourceType::try_from("pdf"), Ok(SourceType::Pdf));
+        assert_eq!(SourceType::Text.as_str(), "text");
+        assert_eq!(SourceType::Pdf.as_str(), "pdf");
+        assert!(SourceType::try_from("image").is_err());
+    }
 }

@@ -2,6 +2,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  formatFileSize,
+  parsePdfSourceMetadata,
+} from "@/features/capture/pdf-source-metadata";
+import {
   useInboxSources,
   useMarkSourceDismissed,
   useMarkSourceProcessed,
@@ -112,6 +116,10 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
     dismissedMutation.error ??
     summaryMutation.error ??
     draftMutation.error;
+  const pdfMetadata =
+    source.sourceType === "pdf"
+      ? parsePdfSourceMetadata(source.metadataJson)
+      : null;
 
   async function summarize() {
     processedMutation.reset();
@@ -141,8 +149,32 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
 
   return (
     <li className="rounded-lg border bg-background p-4">
-      <p className="whitespace-pre-wrap break-words text-sm">
-        {source.rawContent}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border px-2 py-0.5 text-xs font-medium uppercase">
+              {source.sourceType}
+            </span>
+            {pdfMetadata && (
+              <span className="break-all text-sm font-medium">
+                {pdfMetadata.originalFileName}
+              </span>
+            )}
+          </div>
+          {pdfMetadata && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatFileSize(pdfMetadata.fileSize)} ·{" "}
+              {pdfMetadata.extractedTextLength.toLocaleString()} extracted
+              characters
+            </p>
+          )}
+        </div>
+      </div>
+
+      <p className="mt-3 whitespace-pre-wrap break-words text-sm">
+        {source.sourceType === "pdf"
+          ? textPreview(source.rawContent, 600)
+          : source.rawContent}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -306,4 +338,14 @@ function formatCapturedAt(capturedAt: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function textPreview(content: string, limit: number) {
+  const characters = Array.from(content);
+
+  if (characters.length <= limit) {
+    return content;
+  }
+
+  return `${characters.slice(0, limit).join("")}...`;
 }

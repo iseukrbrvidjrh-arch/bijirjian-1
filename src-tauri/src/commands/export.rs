@@ -62,6 +62,29 @@ pub fn export_knowledge_node(
     service.export_knowledge_node(knowledge_id).map(Into::into)
 }
 
+#[tauri::command]
+pub fn get_latest_export_record_for_knowledge(
+    knowledge_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ExportRecordDto>, AppError> {
+    let workspace_repository = SqliteWorkspaceRepository::new(&state.database);
+    let knowledge_repository = SqliteKnowledgeRepository::new(&state.database);
+    let settings_repository = SqliteObsidianSettingsRepository::new(&state.database);
+    let export_repository = SqliteExportRecordRepository::new(&state.database);
+    let markdown_writer = FileSystemKnowledgeMarkdownWriter::new();
+    let service = DefaultExportService::new(
+        &workspace_repository,
+        &knowledge_repository,
+        &settings_repository,
+        &export_repository,
+        &markdown_writer,
+    );
+
+    service
+        .get_latest_export_record_for_knowledge(knowledge_id)
+        .map(|record| record.map(Into::into))
+}
+
 #[cfg(test)]
 mod tests {
     use super::ExportRecordDto;
@@ -90,5 +113,13 @@ mod tests {
         assert!(object.get("apiKey").is_none());
         assert!(object.get("sourceContent").is_none());
         assert!(object.get("rawResponse").is_none());
+    }
+
+    #[test]
+    fn latest_export_response_serializes_none_as_null() {
+        let response: Option<ExportRecordDto> = None;
+        let json = serde_json::to_value(response).expect("serialize empty latest export response");
+
+        assert!(json.is_null());
     }
 }

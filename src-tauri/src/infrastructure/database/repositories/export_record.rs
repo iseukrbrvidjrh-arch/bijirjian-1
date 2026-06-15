@@ -222,6 +222,58 @@ mod tests {
     }
 
     #[test]
+    fn latest_record_uses_created_at_then_rowid_descending() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let knowledge_repository = SqliteKnowledgeRepository::new(&database);
+        let repository = SqliteExportRecordRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let knowledge = knowledge_repository
+            .insert_manual_node(
+                &workspace.id,
+                "Ordered exports",
+                "Exportable content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert knowledge");
+        let first = repository
+            .insert_success(&workspace.id, &knowledge.id, "/vault/first.md")
+            .expect("insert first record");
+        let second = repository
+            .insert_failure(
+                &workspace.id,
+                &knowledge.id,
+                Some("/vault/second.md"),
+                "later row",
+            )
+            .expect("insert second record");
+
+        set_created_at(&database, &first.id, "2026-06-15T02:00:00.000Z");
+        set_created_at(&database, &second.id, "2026-06-15T01:00:00.000Z");
+        assert_eq!(
+            repository
+                .find_latest_for_knowledge(&workspace.id, &knowledge.id)
+                .expect("query latest by timestamp")
+                .expect("latest record should exist")
+                .id,
+            first.id
+        );
+
+        set_created_at(&database, &first.id, "2026-06-15T03:00:00.000Z");
+        set_created_at(&database, &second.id, "2026-06-15T03:00:00.000Z");
+        assert_eq!(
+            repository
+                .find_latest_for_knowledge(&workspace.id, &knowledge.id)
+                .expect("query latest by rowid")
+                .expect("latest record should exist")
+                .id,
+            second.id
+        );
+    }
+
+    #[test]
     fn isolates_latest_records_by_workspace() {
         let database = test_database();
         let workspace_repository = SqliteWorkspaceRepository::new(&database);
@@ -270,6 +322,18 @@ mod tests {
                 Ok(())
             })
             .expect("seed workspace");
+    }
+
+    fn set_created_at(database: &Database, export_id: &str, created_at: &str) {
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE export_records SET created_at = ?1 WHERE id = ?2",
+                    params![created_at, export_id],
+                )?;
+                Ok(())
+            })
+            .expect("set export timestamp");
     }
 
     fn test_database() -> Database {

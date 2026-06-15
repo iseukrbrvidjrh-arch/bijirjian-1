@@ -7,3 +7,14 @@ export function exportKnowledgeNode(knowledgeId: string) {
     knowledgeId,
   });
 }
+
+export function getLatestExportRecordForKnowledge(
+  knowledgeId: string,
+) {
+  return invoke<ExportRecordDto | null>(
+    "get_latest_export_record_for_knowledge",
+    {
+      knowledgeId,
+    },
+  );
+}

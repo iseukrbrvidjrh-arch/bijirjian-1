@@ -24,6 +24,7 @@ pub fn run() {
             commands::ai_provider::test_ai_provider_connection,
             commands::capture::capture_text_source,
             commands::export::export_knowledge_node,
+            commands::export::get_latest_export_record_for_knowledge,
             commands::inbox::list_inbox_sources,
             commands::inbox::mark_source_processed,
             commands::inbox::mark_source_dismissed,

@@ -11,6 +11,11 @@ use crate::{
 
 pub trait ExportService: Send + Sync {
     fn export_knowledge_node(&self, knowledge_id: String) -> Result<ExportRecord, AppError>;
+
+    fn get_latest_export_record_for_knowledge(
+        &self,
+        knowledge_id: String,
+    ) -> Result<Option<ExportRecord>, AppError>;
 }
 
 pub struct DefaultExportService<
@@ -119,13 +124,7 @@ where
     MarkdownWriter: KnowledgeMarkdownWriter + ?Sized,
 {
     fn export_knowledge_node(&self, knowledge_id: String) -> Result<ExportRecord, AppError> {
-        let knowledge_id = knowledge_id.trim();
-        if knowledge_id.is_empty() {
-            return Err(AppError::Validation(
-                "knowledge_id must not be empty".to_owned(),
-            ));
-        }
-
+        let knowledge_id = validate_knowledge_id(&knowledge_id)?;
         let workspace = self.workspace_repository.ensure_default_workspace()?;
         let knowledge = self
             .knowledge_repository
@@ -148,6 +147,30 @@ where
             }
         }
     }
+
+    fn get_latest_export_record_for_knowledge(
+        &self,
+        knowledge_id: String,
+    ) -> Result<Option<ExportRecord>, AppError> {
+        let knowledge_id = validate_knowledge_id(&knowledge_id)?;
+        let workspace = self.workspace_repository.ensure_default_workspace()?;
+        self.knowledge_repository
+            .find_node(&workspace.id, knowledge_id)?;
+
+        self.export_repository
+            .find_latest_for_knowledge(&workspace.id, knowledge_id)
+    }
+}
+
+fn validate_knowledge_id(knowledge_id: &str) -> Result<&str, AppError> {
+    let knowledge_id = knowledge_id.trim();
+    if knowledge_id.is_empty() {
+        return Err(AppError::Validation(
+            "knowledge_id must not be empty".to_owned(),
+        ));
+    }
+
+    Ok(knowledge_id)
 }
 
 #[cfg(test)]
@@ -316,6 +339,94 @@ mod tests {
         );
     }
 
+    #[test]
+    fn latest_export_query_returns_none_without_requiring_a_vault() {
+        let context = TestContext::new();
+        let knowledge = context.insert_accepted("Never exported", "Content");
+        let before = context.find_knowledge(&knowledge.id);
+
+        let latest = context
+            .latest_via_service(&knowledge.id)
+            .expect("query latest export");
+        let after = context.find_knowledge(&knowledge.id);
+
+        assert!(latest.is_none());
+        assert_eq!(before, after);
+        assert_eq!(context.export_record_count(), 0);
+    }
+
+    #[test]
+    fn latest_export_query_does_not_require_an_accepted_status() {
+        let context = TestContext::new();
+        let proposed = context.insert_proposed("query-proposed-run", "Proposed");
+        let archived = context.archive(proposed.clone());
+        let proposed = context.insert_proposed("query-current-run", "Current proposal");
+
+        assert!(context
+            .latest_via_service(&proposed.id)
+            .expect("query proposed node")
+            .is_none());
+        assert!(context
+            .latest_via_service(&archived.id)
+            .expect("query archived node")
+            .is_none());
+        assert_eq!(context.export_record_count(), 0);
+    }
+
+    #[test]
+    fn latest_export_query_returns_succeeded_and_failed_records() {
+        let context = TestContext::new();
+        let knowledge = context.insert_accepted("Export history", "Content");
+        let export_repository = SqliteExportRecordRepository::new(&context.database);
+        let succeeded = export_repository
+            .insert_success(&context.workspace_id, &knowledge.id, "/vault/knowledge.md")
+            .expect("insert success");
+
+        assert_eq!(
+            context
+                .latest_via_service(&knowledge.id)
+                .expect("query succeeded export"),
+            Some(succeeded)
+        );
+
+        let failed = export_repository
+            .insert_failure(
+                &context.workspace_id,
+                &knowledge.id,
+                Some("/vault/knowledge.md"),
+                "disk unavailable",
+            )
+            .expect("insert failure");
+
+        assert_eq!(
+            context
+                .latest_via_service(&knowledge.id)
+                .expect("query failed export"),
+            Some(failed)
+        );
+        assert_eq!(context.export_record_count(), 2);
+    }
+
+    #[test]
+    fn latest_export_query_rejects_empty_missing_and_cross_workspace_ids() {
+        let context = TestContext::new();
+        let other = context.insert_other_workspace_node();
+
+        assert!(matches!(
+            context.latest_via_service(" \n"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            context.latest_via_service("missing"),
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            context.latest_via_service(&other.id),
+            Err(AppError::NotFound(_))
+        ));
+        assert_eq!(context.export_record_count(), 0);
+    }
+
     struct TestContext {
         database: Database,
         workspace_id: String,
@@ -350,6 +461,26 @@ mod tests {
             );
 
             service.export_knowledge_node(knowledge_id.to_owned())
+        }
+
+        fn latest_via_service(
+            &self,
+            knowledge_id: &str,
+        ) -> Result<Option<crate::domain::ExportRecord>, AppError> {
+            let workspace_repository = SqliteWorkspaceRepository::new(&self.database);
+            let knowledge_repository = SqliteKnowledgeRepository::new(&self.database);
+            let settings_repository = PanicObsidianSettingsRepository;
+            let export_repository = SqliteExportRecordRepository::new(&self.database);
+            let writer = PanicKnowledgeMarkdownWriter;
+            let service = DefaultExportService::new(
+                &workspace_repository,
+                &knowledge_repository,
+                &settings_repository,
+                &export_repository,
+                &writer,
+            );
+
+            service.get_latest_export_record_for_knowledge(knowledge_id.to_owned())
         }
 
         fn insert_accepted(&self, title: &str, content: &str) -> crate::domain::KnowledgeNode {
@@ -502,6 +633,37 @@ mod tests {
     fn test_database() -> Database {
         Database::from_connection(Connection::open_in_memory().expect("open in-memory database"))
             .expect("initialize test database")
+    }
+
+    struct PanicObsidianSettingsRepository;
+
+    impl ObsidianSettingsRepository for PanicObsidianSettingsRepository {
+        fn find_by_workspace(
+            &self,
+            _workspace_id: &str,
+        ) -> Result<Option<crate::domain::ObsidianSettings>, AppError> {
+            panic!("latest export query must not read Obsidian settings")
+        }
+
+        fn upsert(
+            &self,
+            _workspace_id: &str,
+            _vault_path: &str,
+        ) -> Result<crate::domain::ObsidianSettings, AppError> {
+            panic!("latest export query must not write Obsidian settings")
+        }
+    }
+
+    struct PanicKnowledgeMarkdownWriter;
+
+    impl crate::domain::ports::KnowledgeMarkdownWriter for PanicKnowledgeMarkdownWriter {
+        fn write_markdown(
+            &self,
+            _vault_path: &str,
+            _knowledge: &crate::domain::KnowledgeNode,
+        ) -> Result<String, AppError> {
+            panic!("latest export query must not call the Markdown writer")
+        }
     }
 
     struct VaultFixture {

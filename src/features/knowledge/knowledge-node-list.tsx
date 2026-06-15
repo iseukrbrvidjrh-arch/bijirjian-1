@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { useExportKnowledgeNode } from "@/features/knowledge/knowledge-export-queries";
+import { KnowledgeExportStatus } from "@/features/knowledge/knowledge-export-status";
 import {
   useAcceptKnowledgeNode,
   useArchiveKnowledgeNode,
@@ -94,32 +94,19 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const acceptMutation = useAcceptKnowledgeNode();
   const archiveMutation = useArchiveKnowledgeNode();
-  const exportMutation = useExportKnowledgeNode();
-  const isPending =
-    acceptMutation.isPending ||
-    archiveMutation.isPending ||
-    exportMutation.isPending;
-  const mutationError =
-    acceptMutation.error ?? archiveMutation.error ?? exportMutation.error;
+  const isPending = acceptMutation.isPending || archiveMutation.isPending;
+  const mutationError = acceptMutation.error ?? archiveMutation.error;
   const hasLongContent =
     node.content.length > 360 || node.content.split("\n").length > 6;
 
   function acceptNode() {
     archiveMutation.reset();
-    exportMutation.reset();
     acceptMutation.mutate(node.id);
   }
 
   function archiveNode() {
     acceptMutation.reset();
-    exportMutation.reset();
     archiveMutation.mutate(node.id);
-  }
-
-  function exportNode() {
-    acceptMutation.reset();
-    archiveMutation.reset();
-    exportMutation.mutate(node.id);
   }
 
   return (
@@ -209,32 +196,7 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
       )}
 
       {node.status === "accepted" && (
-        <div className="mt-4">
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            disabled={isPending}
-            onClick={exportNode}
-          >
-            {exportMutation.isPending ? "Exporting…" : "Export"}
-          </Button>
-
-          <div className="mt-2 min-h-5 text-xs" aria-live="polite">
-            {mutationError && (
-              <span className="text-destructive" role="alert">
-                {mutationError.message}
-              </span>
-            )}
-            {!mutationError &&
-              exportMutation.isSuccess &&
-              exportMutation.data.exportPath && (
-                <span className="break-all text-emerald-700 dark:text-emerald-300">
-                  Exported to {exportMutation.data.exportPath}
-                </span>
-              )}
-          </div>
-        </div>
+        <KnowledgeExportStatus knowledgeId={node.id} />
       )}
     </li>
   );

@@ -22,6 +22,7 @@ pub trait KnowledgeService: Send + Sync {
         &self,
         status: Option<String>,
         knowledge_type: Option<String>,
+        query: Option<String>,
         limit: usize,
     ) -> Result<Vec<KnowledgeNode>, AppError>;
 }
@@ -104,6 +105,7 @@ where
         &self,
         status: Option<String>,
         knowledge_type: Option<String>,
+        query: Option<String>,
         limit: usize,
     ) -> Result<Vec<KnowledgeNode>, AppError> {
         let status = status
@@ -118,9 +120,13 @@ where
             .map(KnowledgeType::try_from)
             .transpose()
             .map_err(AppError::Validation)?;
+        let query = query
+            .as_deref()
+            .map(str::trim)
+            .filter(|query| !query.is_empty());
         let workspace = self.workspace_repository.ensure_default_workspace()?;
         self.knowledge_repository
-            .list_nodes(&workspace.id, status, knowledge_type, limit)
+            .list_nodes(&workspace.id, status, knowledge_type, query, limit)
     }
 }
 
@@ -168,7 +174,7 @@ mod tests {
             .expect("find default workspace")
             .expect("default workspace should exist");
         let nodes = service
-            .list_knowledge_nodes(None, None, 50)
+            .list_knowledge_nodes(None, None, None, 50)
             .expect("list knowledge nodes");
 
         assert_eq!(node.workspace_id, default_workspace.id);
@@ -232,17 +238,58 @@ mod tests {
         let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
 
         service
-            .list_knowledge_nodes(Some("accepted".to_owned()), Some("concept".to_owned()), 50)
+            .list_knowledge_nodes(
+                Some("accepted".to_owned()),
+                Some("concept".to_owned()),
+                None,
+                50,
+            )
             .expect("parse supported filters");
 
         assert!(matches!(
-            service.list_knowledge_nodes(Some("reviewed".to_owned()), None, 50),
+            service.list_knowledge_nodes(Some("reviewed".to_owned()), None, None, 50),
             Err(AppError::Validation(_))
         ));
         assert!(matches!(
-            service.list_knowledge_nodes(None, Some("note".to_owned()), 50),
+            service.list_knowledge_nodes(None, Some("note".to_owned()), None, 50),
             Err(AppError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn trims_search_queries_and_treats_blank_queries_as_absent() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let knowledge_repository = SqliteKnowledgeRepository::new(&database);
+        let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
+        service
+            .create_knowledge_node(
+                "Local First".to_owned(),
+                "Data stays local.".to_owned(),
+                "concept".to_owned(),
+            )
+            .expect("create matching node");
+        service
+            .create_knowledge_node(
+                "SQLite".to_owned(),
+                "Embedded database.".to_owned(),
+                "tool".to_owned(),
+            )
+            .expect("create non-matching node");
+
+        let searched = service
+            .list_knowledge_nodes(None, None, Some("  LOCAL FIRST  ".to_owned()), 50)
+            .expect("search trimmed query");
+        let blank = service
+            .list_knowledge_nodes(None, None, Some(" \n\t ".to_owned()), 50)
+            .expect("treat blank query as absent");
+        let unfiltered = service
+            .list_knowledge_nodes(None, None, None, 50)
+            .expect("list without query");
+
+        assert_eq!(searched.len(), 1);
+        assert_eq!(searched[0].title, "Local First");
+        assert_eq!(blank, unfiltered);
     }
 
     fn test_database() -> Database {

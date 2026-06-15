@@ -34,11 +34,13 @@ export function listKnowledgeNodes({
   limit,
   status,
   knowledgeType,
+  query,
 }: KnowledgeListFilters) {
   return invoke<KnowledgeNodeDto[]>("list_knowledge_nodes", {
     limit,
     status,
     knowledgeType,
+    query,
   });
 }
 

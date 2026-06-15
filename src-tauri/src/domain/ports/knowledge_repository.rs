@@ -40,6 +40,7 @@ pub trait KnowledgeRepository: Send + Sync {
         workspace_id: &str,
         status: Option<KnowledgeStatus>,
         knowledge_type: Option<KnowledgeType>,
+        query: Option<&str>,
         limit: usize,
     ) -> Result<Vec<KnowledgeNode>, AppError>;
 }

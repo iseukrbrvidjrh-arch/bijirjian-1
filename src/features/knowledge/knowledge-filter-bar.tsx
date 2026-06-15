@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import type {
   KnowledgeStatus,
@@ -32,25 +34,78 @@ const TYPE_OPTIONS: Array<{
 interface KnowledgeFilterBarProps {
   status?: KnowledgeStatus;
   knowledgeType?: KnowledgeType;
+  query?: string;
   resultCount: number;
   isRefreshing: boolean;
   onStatusChange: (status?: KnowledgeStatus) => void;
   onKnowledgeTypeChange: (knowledgeType?: KnowledgeType) => void;
+  onQueryChange: (query?: string) => void;
   onRefresh: () => void;
 }
 
 export function KnowledgeFilterBar({
   status,
   knowledgeType,
+  query,
   resultCount,
   isRefreshing,
   onStatusChange,
   onKnowledgeTypeChange,
+  onQueryChange,
   onRefresh,
 }: KnowledgeFilterBarProps) {
+  const [draftQuery, setDraftQuery] = useState(query ?? "");
+
+  useEffect(() => {
+    setDraftQuery(query ?? "");
+  }, [query]);
+
+  function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedQuery = draftQuery.trim();
+    onQueryChange(normalizedQuery || undefined);
+  }
+
+  function clearSearch() {
+    setDraftQuery("");
+    onQueryChange(undefined);
+  }
+
   return (
     <section className="rounded-lg border bg-background p-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={submitSearch}
+      >
+        <div className="min-w-60 flex-1">
+          <label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor="knowledge-search"
+          >
+            Search
+          </label>
+          <input
+            id="knowledge-search"
+            className="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            placeholder="Search title or content..."
+            type="search"
+            value={draftQuery}
+            onChange={(event) => setDraftQuery(event.target.value)}
+          />
+        </div>
+        <Button type="submit">Search</Button>
+        {(query || draftQuery) && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={clearSearch}
+          >
+            Clear search
+          </Button>
+        )}
+      </form>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
         <div className="min-w-40 flex-1">
           <label
             className="text-xs font-medium text-muted-foreground"

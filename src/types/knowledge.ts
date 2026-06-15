@@ -36,4 +36,5 @@ export interface KnowledgeListFilters {
   limit: number;
   status?: KnowledgeStatus;
   knowledgeType?: KnowledgeType;
+  query?: string;
 }

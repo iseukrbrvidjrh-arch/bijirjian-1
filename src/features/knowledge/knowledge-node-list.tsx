@@ -51,7 +51,7 @@ export function KnowledgeNodeList({
       <KnowledgeState>
         <span>
           {hasActiveFilters
-            ? "No knowledge matches the current filters."
+            ? "No knowledge matches the current search or filters."
             : "No knowledge nodes yet. Create the first one above."}
         </span>
         {hasActiveFilters && (
@@ -62,7 +62,7 @@ export function KnowledgeNodeList({
             variant="outline"
             onClick={onClearFilters}
           >
-            Clear filters
+            Clear search and filters
           </Button>
         )}
       </KnowledgeState>

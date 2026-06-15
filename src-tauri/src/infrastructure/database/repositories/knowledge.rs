@@ -219,10 +219,12 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
         workspace_id: &str,
         status: Option<KnowledgeStatus>,
         knowledge_type: Option<KnowledgeType>,
+        query: Option<&str>,
         limit: usize,
     ) -> Result<Vec<KnowledgeNode>, AppError> {
         let limit = i64::try_from(limit)
             .map_err(|_| AppError::Validation("knowledge limit is too large".to_owned()))?;
+        let query_pattern = query.map(search_pattern);
 
         self.database.with_connection(|connection| {
             let mut statement = connection.prepare(
@@ -242,8 +244,13 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                 WHERE workspace_id = ?1
                   AND (?2 IS NULL OR status = ?2)
                   AND (?3 IS NULL OR knowledge_type = ?3)
+                  AND (
+                      ?4 IS NULL
+                      OR LOWER(title) LIKE ?4 ESCAPE '!'
+                      OR LOWER(content) LIKE ?4 ESCAPE '!'
+                  )
                 ORDER BY created_at DESC, rowid DESC
-                LIMIT ?4
+                LIMIT ?5
                 ",
             )?;
             let nodes = statement
@@ -252,6 +259,7 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                         workspace_id,
                         status.map(KnowledgeStatus::as_str),
                         knowledge_type.map(KnowledgeType::as_str),
+                        query_pattern,
                         limit
                     ],
                     map_knowledge_node,
@@ -261,6 +269,16 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
             Ok(nodes)
         })
     }
+}
+
+fn search_pattern(query: &str) -> String {
+    let escaped = query
+        .to_lowercase()
+        .replace('!', "!!")
+        .replace('%', "!%")
+        .replace('_', "!_");
+
+    format!("%{escaped}%")
 }
 
 fn map_knowledge_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeNode> {
@@ -667,7 +685,7 @@ mod tests {
             .accept_proposed_node(&workspace.id, &target.id)
             .expect("accept target node");
         let nodes = repository
-            .list_nodes(&workspace.id, None, None, 50)
+            .list_nodes(&workspace.id, None, None, None, 50)
             .expect("list knowledge nodes");
         let untouched_after = nodes
             .into_iter()
@@ -705,7 +723,7 @@ mod tests {
             .expect("insert other workspace node");
 
         let nodes = repository
-            .list_nodes(&default_workspace.id, None, None, 50)
+            .list_nodes(&default_workspace.id, None, None, None, 50)
             .expect("list default workspace nodes");
 
         assert_eq!(nodes.len(), 1);
@@ -759,10 +777,10 @@ mod tests {
             .expect("set deterministic timestamps");
 
         let all_nodes = repository
-            .list_nodes(&workspace.id, None, None, 50)
+            .list_nodes(&workspace.id, None, None, None, 50)
             .expect("list all nodes");
         let limited_nodes = repository
-            .list_nodes(&workspace.id, None, None, 1)
+            .list_nodes(&workspace.id, None, None, None, 1)
             .expect("list limited nodes");
 
         assert_eq!(
@@ -825,25 +843,44 @@ mod tests {
             .expect("archive proposed node");
 
         let all = repository
-            .list_nodes(&workspace.id, None, None, 50)
+            .list_nodes(&workspace.id, None, None, None, 50)
             .expect("list all nodes");
         let proposed_nodes = repository
-            .list_nodes(&workspace.id, Some(KnowledgeStatus::Proposed), None, 50)
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Proposed),
+                None,
+                None,
+                50,
+            )
             .expect("filter proposed nodes");
         let accepted_nodes = repository
-            .list_nodes(&workspace.id, Some(KnowledgeStatus::Accepted), None, 50)
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Accepted),
+                None,
+                None,
+                50,
+            )
             .expect("filter accepted nodes");
         let archived_nodes = repository
-            .list_nodes(&workspace.id, Some(KnowledgeStatus::Archived), None, 50)
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Archived),
+                None,
+                None,
+                50,
+            )
             .expect("filter archived nodes");
         let insight_nodes = repository
-            .list_nodes(&workspace.id, None, Some(KnowledgeType::Insight), 50)
+            .list_nodes(&workspace.id, None, Some(KnowledgeType::Insight), None, 50)
             .expect("filter insight nodes");
         let accepted_concepts = repository
             .list_nodes(
                 &workspace.id,
                 Some(KnowledgeStatus::Accepted),
                 Some(KnowledgeType::Concept),
+                None,
                 50,
             )
             .expect("filter accepted concepts");
@@ -927,6 +964,7 @@ mod tests {
                 &workspace.id,
                 Some(KnowledgeStatus::Accepted),
                 Some(KnowledgeType::Concept),
+                None,
                 2,
             )
             .expect("list filtered nodes");
@@ -934,6 +972,220 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].id, newest_by_rowid.id);
         assert_eq!(filtered[1].id, newer.id);
+    }
+
+    #[test]
+    fn searches_title_and_content_case_insensitively_and_escapes_wildcards() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let title_match = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Local First Architecture",
+                "Stores data nearby.",
+                KnowledgeType::Concept,
+            )
+            .expect("insert title match");
+        let content_match = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Embedded database",
+                "SQLite keeps the knowledge local.",
+                KnowledgeType::Tool,
+            )
+            .expect("insert content match");
+        let percent_match = repository
+            .insert_manual_node(
+                &workspace.id,
+                "100% local",
+                "Literal percent.",
+                KnowledgeType::Insight,
+            )
+            .expect("insert percent match");
+        repository
+            .insert_manual_node(
+                &workspace.id,
+                "100X local",
+                "Would match an unescaped percent.",
+                KnowledgeType::Insight,
+            )
+            .expect("insert percent decoy");
+        let underscore_match = repository
+            .insert_manual_node(
+                &workspace.id,
+                "snake_case",
+                "Literal underscore.",
+                KnowledgeType::Resource,
+            )
+            .expect("insert underscore match");
+        repository
+            .insert_manual_node(
+                &workspace.id,
+                "snakeXcase",
+                "Would match an unescaped underscore.",
+                KnowledgeType::Resource,
+            )
+            .expect("insert underscore decoy");
+
+        assert_eq!(
+            repository
+                .list_nodes(&workspace.id, None, None, Some("LOCAL FIRST"), 50)
+                .expect("search title"),
+            vec![title_match]
+        );
+        assert_eq!(
+            repository
+                .list_nodes(&workspace.id, None, None, Some("SQLITE"), 50)
+                .expect("search content"),
+            vec![content_match]
+        );
+        assert_eq!(
+            repository
+                .list_nodes(&workspace.id, None, None, Some("100%"), 50)
+                .expect("search literal percent"),
+            vec![percent_match]
+        );
+        assert_eq!(
+            repository
+                .list_nodes(&workspace.id, None, None, Some("snake_case"), 50)
+                .expect("search literal underscore"),
+            vec![underscore_match]
+        );
+        assert!(repository
+            .list_nodes(&workspace.id, None, None, Some("missing"), 50)
+            .expect("search missing term")
+            .is_empty());
+    }
+
+    #[test]
+    fn combines_search_with_status_type_workspace_order_and_limit() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "search-other-workspace", "Search other");
+        let older = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Search needle older",
+                "Matching content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert older accepted concept");
+        let newer = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Search needle newer",
+                "Matching content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert newer accepted concept");
+        repository
+            .insert_manual_node(
+                &workspace.id,
+                "Search needle tool",
+                "Matching content",
+                KnowledgeType::Tool,
+            )
+            .expect("insert accepted tool");
+        seed_ai_run_with_source(
+            &database,
+            &workspace.id,
+            "search-proposed-source",
+            "search-proposed-run",
+        );
+        let proposed = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "search-proposed-run",
+                "Search needle proposed",
+                "Matching content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed insight");
+        repository
+            .insert_manual_node(
+                "search-other-workspace",
+                "Search needle elsewhere",
+                "Matching content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert cross-workspace match");
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id = ?2",
+                    params!["2026-06-14T01:00:00.000Z", older.id],
+                )?;
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id = ?2",
+                    params!["2026-06-14T02:00:00.000Z", newer.id],
+                )?;
+                Ok(())
+            })
+            .expect("set search ordering timestamps");
+        let older_before = repository
+            .find_node(&workspace.id, &older.id)
+            .expect("read node before search");
+
+        let accepted = repository
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Accepted),
+                None,
+                Some("needle"),
+                50,
+            )
+            .expect("combine status and search");
+        let concepts = repository
+            .list_nodes(
+                &workspace.id,
+                None,
+                Some(KnowledgeType::Concept),
+                Some("needle"),
+                50,
+            )
+            .expect("combine type and search");
+        let proposed_insights = repository
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Proposed),
+                Some(KnowledgeType::Insight),
+                Some("needle"),
+                50,
+            )
+            .expect("combine status type and search");
+        let limited = repository
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Accepted),
+                Some(KnowledgeType::Concept),
+                Some("needle"),
+                1,
+            )
+            .expect("limit searched results");
+        let older_after = repository
+            .find_node(&workspace.id, &older.id)
+            .expect("read node after search");
+
+        assert_eq!(accepted.len(), 3);
+        assert_eq!(
+            concepts
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![newer.id.as_str(), older.id.as_str()]
+        );
+        assert_eq!(proposed_insights, vec![proposed]);
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].id, newer.id);
+        assert_eq!(older_before, older_after);
     }
 
     fn seed_workspace(database: &Database, id: &str, name: &str) {

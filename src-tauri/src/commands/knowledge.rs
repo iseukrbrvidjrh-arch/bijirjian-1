@@ -114,6 +114,7 @@ pub fn create_knowledge_node(
 pub fn list_knowledge_nodes(
     status: Option<String>,
     knowledge_type: Option<String>,
+    query: Option<String>,
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<KnowledgeNodeDto>, AppError> {
@@ -125,6 +126,7 @@ pub fn list_knowledge_nodes(
         .list_knowledge_nodes(
             status,
             knowledge_type,
+            query,
             limit.unwrap_or(DEFAULT_KNOWLEDGE_LIMIT),
         )
         .map(|nodes| nodes.into_iter().map(Into::into).collect())

@@ -23,6 +23,7 @@ export const knowledgeQueryKeys = {
         limit: filters.limit,
         status: filters.status,
         knowledgeType: filters.knowledgeType,
+        query: filters.query,
       },
     ] as const,
 };

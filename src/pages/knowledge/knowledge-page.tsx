@@ -18,7 +18,7 @@ export function KnowledgePage() {
   });
   const knowledgeQuery = useKnowledgeNodes(filters);
   const hasActiveFilters = Boolean(
-    filters.status || filters.knowledgeType,
+    filters.status || filters.knowledgeType || filters.query,
   );
 
   function setStatus(status?: KnowledgeStatus) {
@@ -27,6 +27,14 @@ export function KnowledgePage() {
 
   function setKnowledgeType(knowledgeType?: KnowledgeType) {
     setFilters((current) => ({ ...current, knowledgeType }));
+  }
+
+  function setQuery(query?: string) {
+    const normalizedQuery = query?.trim();
+    setFilters((current) => ({
+      ...current,
+      query: normalizedQuery || undefined,
+    }));
   }
 
   function clearFilters() {
@@ -47,12 +55,14 @@ export function KnowledgePage() {
         <KnowledgeFilterBar
           status={filters.status}
           knowledgeType={filters.knowledgeType}
+          query={filters.query}
           resultCount={knowledgeQuery.data?.length ?? 0}
           isRefreshing={
             knowledgeQuery.isFetching && !knowledgeQuery.isPending
           }
           onStatusChange={setStatus}
           onKnowledgeTypeChange={setKnowledgeType}
+          onQueryChange={setQuery}
           onRefresh={() => void knowledgeQuery.refetch()}
         />
         <KnowledgeNodeList

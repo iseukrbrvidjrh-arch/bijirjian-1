@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         ports::{KnowledgeRepository, WorkspaceRepository},
-        KnowledgeNode, KnowledgeType,
+        KnowledgeNode, KnowledgeStatus, KnowledgeType,
     },
     error::AppError,
 };
@@ -18,7 +18,12 @@ pub trait KnowledgeService: Send + Sync {
 
     fn archive_knowledge_node(&self, knowledge_id: String) -> Result<KnowledgeNode, AppError>;
 
-    fn list_knowledge_nodes(&self, limit: usize) -> Result<Vec<KnowledgeNode>, AppError>;
+    fn list_knowledge_nodes(
+        &self,
+        status: Option<String>,
+        knowledge_type: Option<String>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeNode>, AppError>;
 }
 
 pub struct DefaultKnowledgeService<'service, WorkspaceRepo, KnowledgeRepo>
@@ -95,9 +100,27 @@ where
             .archive_proposed_node(&workspace.id, knowledge_id)
     }
 
-    fn list_knowledge_nodes(&self, limit: usize) -> Result<Vec<KnowledgeNode>, AppError> {
+    fn list_knowledge_nodes(
+        &self,
+        status: Option<String>,
+        knowledge_type: Option<String>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeNode>, AppError> {
+        let status = status
+            .as_deref()
+            .map(str::trim)
+            .map(KnowledgeStatus::try_from)
+            .transpose()
+            .map_err(AppError::Validation)?;
+        let knowledge_type = knowledge_type
+            .as_deref()
+            .map(str::trim)
+            .map(KnowledgeType::try_from)
+            .transpose()
+            .map_err(AppError::Validation)?;
         let workspace = self.workspace_repository.ensure_default_workspace()?;
-        self.knowledge_repository.list_nodes(&workspace.id, limit)
+        self.knowledge_repository
+            .list_nodes(&workspace.id, status, knowledge_type, limit)
     }
 }
 
@@ -145,7 +168,7 @@ mod tests {
             .expect("find default workspace")
             .expect("default workspace should exist");
         let nodes = service
-            .list_knowledge_nodes(50)
+            .list_knowledge_nodes(None, None, 50)
             .expect("list knowledge nodes");
 
         assert_eq!(node.workspace_id, default_workspace.id);
@@ -197,6 +220,27 @@ mod tests {
         ));
         assert!(matches!(
             service.archive_knowledge_node("\t".to_owned()),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn parses_optional_knowledge_filters_and_rejects_unknown_values() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let knowledge_repository = SqliteKnowledgeRepository::new(&database);
+        let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
+
+        service
+            .list_knowledge_nodes(Some("accepted".to_owned()), Some("concept".to_owned()), 50)
+            .expect("parse supported filters");
+
+        assert!(matches!(
+            service.list_knowledge_nodes(Some("reviewed".to_owned()), None, 50),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            service.list_knowledge_nodes(None, Some("note".to_owned()), 50),
             Err(AppError::Validation(_))
         ));
     }

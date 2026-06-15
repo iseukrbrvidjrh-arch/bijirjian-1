@@ -1,41 +1,87 @@
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   useAcceptKnowledgeNode,
   useArchiveKnowledgeNode,
-  useKnowledgeNodes,
 } from "@/features/knowledge/knowledge-queries";
 import type { KnowledgeNodeDto } from "@/types/knowledge";
 
-export function KnowledgeNodeList() {
-  const knowledgeQuery = useKnowledgeNodes();
+interface KnowledgeNodeListProps {
+  nodes: KnowledgeNodeDto[];
+  isPending: boolean;
+  error: Error | null;
+  hasActiveFilters: boolean;
+  onRetry: () => void;
+  onClearFilters: () => void;
+}
 
-  if (knowledgeQuery.isPending) {
+export function KnowledgeNodeList({
+  nodes,
+  isPending,
+  error,
+  hasActiveFilters,
+  onRetry,
+  onClearFilters,
+}: KnowledgeNodeListProps) {
+  if (isPending) {
     return <KnowledgeState>Loading knowledge...</KnowledgeState>;
   }
 
-  if (knowledgeQuery.isError) {
+  if (error && nodes.length === 0) {
     return (
       <KnowledgeState tone="error">
-        Could not load knowledge: {knowledgeQuery.error.message}
+        <span>Could not load knowledge: {error.message}</span>
+        <Button
+          className="mt-3"
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={onRetry}
+        >
+          Retry
+        </Button>
       </KnowledgeState>
     );
   }
 
-  if (knowledgeQuery.data.length === 0) {
+  if (nodes.length === 0) {
     return (
       <KnowledgeState>
-        No knowledge nodes yet. Create the first one above.
+        <span>
+          {hasActiveFilters
+            ? "No knowledge matches the current filters."
+            : "No knowledge nodes yet. Create the first one above."}
+        </span>
+        {hasActiveFilters && (
+          <Button
+            className="mt-3"
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={onClearFilters}
+          >
+            Clear filters
+          </Button>
+        )}
       </KnowledgeState>
     );
   }
 
   return (
     <div className="space-y-3">
-      <h2 className="text-sm font-medium text-muted-foreground">
-        Knowledge nodes
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Knowledge nodes
+        </h2>
+        {error && (
+          <span className="text-xs text-destructive" role="alert">
+            Refresh failed: {error.message}
+          </span>
+        )}
+      </div>
       <ul className="space-y-3">
-        {knowledgeQuery.data.map((node) => (
+        {nodes.map((node) => (
           <KnowledgeNodeItem key={node.id} node={node} />
         ))}
       </ul>
@@ -44,12 +90,13 @@ export function KnowledgeNodeList() {
 }
 
 function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const acceptMutation = useAcceptKnowledgeNode();
   const archiveMutation = useArchiveKnowledgeNode();
-  const isPending =
-    acceptMutation.isPending || archiveMutation.isPending;
-  const mutationError =
-    acceptMutation.error ?? archiveMutation.error;
+  const isPending = acceptMutation.isPending || archiveMutation.isPending;
+  const mutationError = acceptMutation.error ?? archiveMutation.error;
+  const hasLongContent =
+    node.content.length > 360 || node.content.split("\n").length > 6;
 
   function acceptNode() {
     archiveMutation.reset();
@@ -64,25 +111,56 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
   return (
     <li className="rounded-lg border bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 className="font-semibold">{node.title}</h3>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-            <span className="capitalize text-muted-foreground">
-              {node.knowledgeType}
-            </span>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <KnowledgeStatusLabel status={node.status} />
+            <KnowledgeTypeLabel knowledgeType={node.knowledgeType} />
           </div>
         </div>
-        <time
-          className="text-xs text-muted-foreground"
-          dateTime={node.createdAt}
-        >
-          {formatCreatedAt(node.createdAt)}
-        </time>
+        <dl className="shrink-0 space-y-1 text-right text-xs text-muted-foreground">
+          <div>
+            <dt className="inline font-medium">Created </dt>
+            <dd className="inline">
+              <time dateTime={node.createdAt}>
+                {formatTimestamp(node.createdAt)}
+              </time>
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-medium">Updated </dt>
+            <dd className="inline">
+              <time dateTime={node.updatedAt}>
+                {formatTimestamp(node.updatedAt)}
+              </time>
+            </dd>
+          </div>
+        </dl>
       </div>
-      <p className="mt-3 whitespace-pre-wrap break-words text-sm">
-        {node.content}
-      </p>
+
+      <div className="mt-4">
+        <p
+          className={`whitespace-pre-wrap break-words text-sm leading-6 ${
+            hasLongContent && !isExpanded
+              ? "max-h-32 overflow-hidden"
+              : ""
+          }`}
+        >
+          {node.content}
+        </p>
+        {hasLongContent && (
+          <Button
+            className="mt-2 px-0"
+            size="sm"
+            type="button"
+            variant="link"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {isExpanded ? "Show less" : "Show more"}
+          </Button>
+        )}
+      </div>
 
       {node.status === "proposed" && (
         <div className="mt-4">
@@ -119,6 +197,18 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
   );
 }
 
+function KnowledgeTypeLabel({
+  knowledgeType,
+}: {
+  knowledgeType: KnowledgeNodeDto["knowledgeType"];
+}) {
+  return (
+    <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 font-medium capitalize text-sky-700 dark:text-sky-300">
+      {knowledgeType}
+    </span>
+  );
+}
+
 function KnowledgeStatusLabel({
   status,
 }: {
@@ -148,7 +238,7 @@ function KnowledgeState({
   tone?: "muted" | "error";
 }) {
   return (
-    <p
+    <div
       className={
         tone === "error"
           ? "rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
@@ -157,15 +247,15 @@ function KnowledgeState({
       role={tone === "error" ? "alert" : "status"}
     >
       {children}
-    </p>
+    </div>
   );
 }
 
-function formatCreatedAt(createdAt: string) {
-  const date = new Date(createdAt);
+function formatTimestamp(timestamp: string) {
+  const date = new Date(timestamp);
 
   if (Number.isNaN(date.getTime())) {
-    return createdAt;
+    return timestamp;
   }
 
   return new Intl.DateTimeFormat(undefined, {

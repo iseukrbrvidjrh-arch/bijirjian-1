@@ -182,7 +182,13 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
         )
     }
 
-    fn list_nodes(&self, workspace_id: &str, limit: usize) -> Result<Vec<KnowledgeNode>, AppError> {
+    fn list_nodes(
+        &self,
+        workspace_id: &str,
+        status: Option<KnowledgeStatus>,
+        knowledge_type: Option<KnowledgeType>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeNode>, AppError> {
         let limit = i64::try_from(limit)
             .map_err(|_| AppError::Validation("knowledge limit is too large".to_owned()))?;
 
@@ -202,12 +208,22 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
                     archived_at
                 FROM knowledge_nodes
                 WHERE workspace_id = ?1
+                  AND (?2 IS NULL OR status = ?2)
+                  AND (?3 IS NULL OR knowledge_type = ?3)
                 ORDER BY created_at DESC, rowid DESC
-                LIMIT ?2
+                LIMIT ?4
                 ",
             )?;
             let nodes = statement
-                .query_map(params![workspace_id, limit], map_knowledge_node)?
+                .query_map(
+                    params![
+                        workspace_id,
+                        status.map(KnowledgeStatus::as_str),
+                        knowledge_type.map(KnowledgeType::as_str),
+                        limit
+                    ],
+                    map_knowledge_node,
+                )?
                 .collect::<Result<Vec<_>, _>>()?;
 
             Ok(nodes)
@@ -585,7 +601,7 @@ mod tests {
             .accept_proposed_node(&workspace.id, &target.id)
             .expect("accept target node");
         let nodes = repository
-            .list_nodes(&workspace.id, 50)
+            .list_nodes(&workspace.id, None, None, 50)
             .expect("list knowledge nodes");
         let untouched_after = nodes
             .into_iter()
@@ -623,7 +639,7 @@ mod tests {
             .expect("insert other workspace node");
 
         let nodes = repository
-            .list_nodes(&default_workspace.id, 50)
+            .list_nodes(&default_workspace.id, None, None, 50)
             .expect("list default workspace nodes");
 
         assert_eq!(nodes.len(), 1);
@@ -677,10 +693,10 @@ mod tests {
             .expect("set deterministic timestamps");
 
         let all_nodes = repository
-            .list_nodes(&workspace.id, 50)
+            .list_nodes(&workspace.id, None, None, 50)
             .expect("list all nodes");
         let limited_nodes = repository
-            .list_nodes(&workspace.id, 1)
+            .list_nodes(&workspace.id, None, None, 1)
             .expect("list limited nodes");
 
         assert_eq!(
@@ -692,6 +708,166 @@ mod tests {
         );
         assert_eq!(limited_nodes.len(), 1);
         assert_eq!(limited_nodes[0].title, "Newer");
+    }
+
+    #[test]
+    fn filters_nodes_by_status_type_and_combination() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        let accepted_concept = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Accepted concept",
+                "Accepted concept content",
+                KnowledgeType::Concept,
+            )
+            .expect("insert accepted concept");
+        let accepted_tool = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Accepted tool",
+                "Accepted tool content",
+                KnowledgeType::Tool,
+            )
+            .expect("insert accepted tool");
+        seed_ai_run_with_source(&database, &workspace.id, "proposed-source", "proposed-run");
+        let proposed = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "proposed-run",
+                "Proposed insight",
+                "Proposed content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed insight");
+        seed_ai_run_with_source(&database, &workspace.id, "archived-source", "archived-run");
+        let archived = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "archived-run",
+                "Archived insight",
+                "Archived content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert proposed node to archive");
+        repository
+            .archive_proposed_node(&workspace.id, &archived.id)
+            .expect("archive proposed node");
+
+        let all = repository
+            .list_nodes(&workspace.id, None, None, 50)
+            .expect("list all nodes");
+        let proposed_nodes = repository
+            .list_nodes(&workspace.id, Some(KnowledgeStatus::Proposed), None, 50)
+            .expect("filter proposed nodes");
+        let accepted_nodes = repository
+            .list_nodes(&workspace.id, Some(KnowledgeStatus::Accepted), None, 50)
+            .expect("filter accepted nodes");
+        let archived_nodes = repository
+            .list_nodes(&workspace.id, Some(KnowledgeStatus::Archived), None, 50)
+            .expect("filter archived nodes");
+        let insight_nodes = repository
+            .list_nodes(&workspace.id, None, Some(KnowledgeType::Insight), 50)
+            .expect("filter insight nodes");
+        let accepted_concepts = repository
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Accepted),
+                Some(KnowledgeType::Concept),
+                50,
+            )
+            .expect("filter accepted concepts");
+
+        assert_eq!(all.len(), 4);
+        assert_eq!(proposed_nodes, vec![proposed]);
+        assert_eq!(accepted_nodes.len(), 2);
+        assert!(accepted_nodes
+            .iter()
+            .any(|node| node.id == accepted_concept.id));
+        assert!(accepted_nodes
+            .iter()
+            .any(|node| node.id == accepted_tool.id));
+        assert_eq!(archived_nodes.len(), 1);
+        assert_eq!(archived_nodes[0].id, archived.id);
+        assert_eq!(insight_nodes.len(), 2);
+        assert_eq!(accepted_concepts, vec![accepted_concept]);
+    }
+
+    #[test]
+    fn filtered_lists_preserve_workspace_order_and_limit() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "other-filter-workspace", "Other filter");
+        let older = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Older concept",
+                "Older",
+                KnowledgeType::Concept,
+            )
+            .expect("insert older concept");
+        let newer = repository
+            .insert_manual_node(
+                &workspace.id,
+                "First tied concept",
+                "First tied",
+                KnowledgeType::Concept,
+            )
+            .expect("insert first tied concept");
+        let newest_by_rowid = repository
+            .insert_manual_node(
+                &workspace.id,
+                "Second tied concept",
+                "Second tied",
+                KnowledgeType::Concept,
+            )
+            .expect("insert second tied concept");
+        repository
+            .insert_manual_node(
+                "other-filter-workspace",
+                "Other concept",
+                "Other",
+                KnowledgeType::Concept,
+            )
+            .expect("insert other workspace concept");
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id = ?2",
+                    params!["2026-06-14T01:00:00.000Z", older.id],
+                )?;
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id = ?2",
+                    params!["2026-06-14T02:00:00.000Z", newer.id],
+                )?;
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id = ?2",
+                    params!["2026-06-14T02:00:00.000Z", newest_by_rowid.id],
+                )?;
+                Ok(())
+            })
+            .expect("set deterministic creation timestamps");
+
+        let filtered = repository
+            .list_nodes(
+                &workspace.id,
+                Some(KnowledgeStatus::Accepted),
+                Some(KnowledgeType::Concept),
+                2,
+            )
+            .expect("list filtered nodes");
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].id, newest_by_rowid.id);
+        assert_eq!(filtered[1].id, newer.id);
     }
 
     fn seed_workspace(database: &Database, id: &str, name: &str) {

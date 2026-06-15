@@ -31,3 +31,9 @@ export interface CreateKnowledgeNodeInput {
   content: string;
   knowledgeType: KnowledgeType;
 }
+
+export interface KnowledgeListFilters {
+  limit: number;
+  status?: KnowledgeStatus;
+  knowledgeType?: KnowledgeType;
+}

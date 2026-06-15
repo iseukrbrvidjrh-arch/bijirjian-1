@@ -11,19 +11,26 @@ import {
   createKnowledgeNode,
   listKnowledgeNodes,
 } from "@/services/ipc";
-
-const DEFAULT_KNOWLEDGE_LIMIT = 50;
+import type { KnowledgeListFilters } from "@/types/knowledge";
 
 export const knowledgeQueryKeys = {
   all: ["knowledge"] as const,
-  list: (limit: number) =>
-    [...knowledgeQueryKeys.all, "list", { limit }] as const,
+  list: (filters: KnowledgeListFilters) =>
+    [
+      ...knowledgeQueryKeys.all,
+      "list",
+      {
+        limit: filters.limit,
+        status: filters.status,
+        knowledgeType: filters.knowledgeType,
+      },
+    ] as const,
 };
 
-export function useKnowledgeNodes(limit = DEFAULT_KNOWLEDGE_LIMIT) {
+export function useKnowledgeNodes(filters: KnowledgeListFilters) {
   return useQuery({
-    queryKey: knowledgeQueryKeys.list(limit),
-    queryFn: () => listKnowledgeNodes(limit),
+    queryKey: knowledgeQueryKeys.list(filters),
+    queryFn: () => listKnowledgeNodes(filters),
   });
 }
 

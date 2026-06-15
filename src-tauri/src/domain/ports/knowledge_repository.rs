@@ -1,5 +1,5 @@
 use crate::{
-    domain::{KnowledgeNode, KnowledgeType},
+    domain::{KnowledgeNode, KnowledgeStatus, KnowledgeType},
     error::AppError,
 };
 
@@ -33,5 +33,11 @@ pub trait KnowledgeRepository: Send + Sync {
         knowledge_id: &str,
     ) -> Result<KnowledgeNode, AppError>;
 
-    fn list_nodes(&self, workspace_id: &str, limit: usize) -> Result<Vec<KnowledgeNode>, AppError>;
+    fn list_nodes(
+        &self,
+        workspace_id: &str,
+        status: Option<KnowledgeStatus>,
+        knowledge_type: Option<KnowledgeType>,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeNode>, AppError>;
 }

@@ -112,6 +112,8 @@ pub fn create_knowledge_node(
 
 #[tauri::command]
 pub fn list_knowledge_nodes(
+    status: Option<String>,
+    knowledge_type: Option<String>,
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<KnowledgeNodeDto>, AppError> {
@@ -120,7 +122,11 @@ pub fn list_knowledge_nodes(
     let service = DefaultKnowledgeService::new(&workspace_repository, &knowledge_repository);
 
     service
-        .list_knowledge_nodes(limit.unwrap_or(DEFAULT_KNOWLEDGE_LIMIT))
+        .list_knowledge_nodes(
+            status,
+            knowledge_type,
+            limit.unwrap_or(DEFAULT_KNOWLEDGE_LIMIT),
+        )
         .map(|nodes| nodes.into_iter().map(Into::into).collect())
 }
 

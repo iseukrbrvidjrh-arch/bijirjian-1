@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   CreateKnowledgeNodeInput,
+  KnowledgeListFilters,
   KnowledgeNodeDto,
 } from "@/types/knowledge";
 
@@ -29,9 +30,15 @@ export function createKnowledgeNode({
   });
 }
 
-export function listKnowledgeNodes(limit = 50) {
+export function listKnowledgeNodes({
+  limit,
+  status,
+  knowledgeType,
+}: KnowledgeListFilters) {
   return invoke<KnowledgeNodeDto[]>("list_knowledge_nodes", {
     limit,
+    status,
+    knowledgeType,
   });
 }
 

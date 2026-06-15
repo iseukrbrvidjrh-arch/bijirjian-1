@@ -1,11 +1,18 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { KnowledgeExportStatus } from "@/features/knowledge/knowledge-export-status";
 import {
   useAcceptKnowledgeNode,
   useArchiveKnowledgeNode,
 } from "@/features/knowledge/knowledge-queries";
+import {
+  formatDateTime,
+  formatUiError,
+  knowledgeStatusLabel,
+  knowledgeTypeLabel,
+} from "@/lib/display";
 import type { KnowledgeNodeDto } from "@/types/knowledge";
 
 interface KnowledgeNodeListProps {
@@ -26,13 +33,13 @@ export function KnowledgeNodeList({
   onClearFilters,
 }: KnowledgeNodeListProps) {
   if (isPending) {
-    return <KnowledgeState>Loading knowledge...</KnowledgeState>;
+    return <KnowledgeState>正在加载知识库…</KnowledgeState>;
   }
 
   if (error && nodes.length === 0) {
     return (
       <KnowledgeState tone="error">
-        <span>Could not load knowledge: {error.message}</span>
+        <span>知识库加载失败：{formatUiError(error)}</span>
         <Button
           className="mt-3"
           size="sm"
@@ -40,7 +47,7 @@ export function KnowledgeNodeList({
           variant="outline"
           onClick={onRetry}
         >
-          Retry
+          重试
         </Button>
       </KnowledgeState>
     );
@@ -51,8 +58,8 @@ export function KnowledgeNodeList({
       <KnowledgeState>
         <span>
           {hasActiveFilters
-            ? "No knowledge matches the current search or filters."
-            : "No knowledge nodes yet. Create the first one above."}
+            ? "当前搜索或筛选条件下没有结果。"
+            : "知识库还是空的，可以在上方手动添加一条知识。"}
         </span>
         {hasActiveFilters && (
           <Button
@@ -62,7 +69,7 @@ export function KnowledgeNodeList({
             variant="outline"
             onClick={onClearFilters}
           >
-            Clear search and filters
+            清除全部条件
           </Button>
         )}
       </KnowledgeState>
@@ -73,11 +80,11 @@ export function KnowledgeNodeList({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-muted-foreground">
-          Knowledge nodes
+          知识列表
         </h2>
         {error && (
           <span className="text-xs text-destructive" role="alert">
-            Refresh failed: {error.message}
+            刷新失败：{formatUiError(error)}
           </span>
         )}
       </div>
@@ -121,18 +128,18 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
         </div>
         <dl className="shrink-0 space-y-1 text-right text-xs text-muted-foreground">
           <div>
-            <dt className="inline font-medium">Created </dt>
+            <dt className="inline font-medium">创建于 </dt>
             <dd className="inline">
               <time dateTime={node.createdAt}>
-                {formatTimestamp(node.createdAt)}
+                {formatDateTime(node.createdAt)}
               </time>
             </dd>
           </div>
           <div>
-            <dt className="inline font-medium">Updated </dt>
+            <dt className="inline font-medium">更新于 </dt>
             <dd className="inline">
               <time dateTime={node.updatedAt}>
-                {formatTimestamp(node.updatedAt)}
+                {formatDateTime(node.updatedAt)}
               </time>
             </dd>
           </div>
@@ -158,7 +165,7 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((current) => !current)}
           >
-            {isExpanded ? "Show less" : "Show more"}
+            {isExpanded ? "收起内容" : "展开全文"}
           </Button>
         )}
       </div>
@@ -172,7 +179,7 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
               disabled={isPending}
               onClick={acceptNode}
             >
-              {acceptMutation.isPending ? "Accepting…" : "Accept"}
+              {acceptMutation.isPending ? "正在收录…" : "收录"}
             </Button>
             <Button
               size="sm"
@@ -181,14 +188,14 @@ function KnowledgeNodeItem({ node }: { node: KnowledgeNodeDto }) {
               disabled={isPending}
               onClick={archiveNode}
             >
-              {archiveMutation.isPending ? "Archiving…" : "Archive"}
+              {archiveMutation.isPending ? "正在归档…" : "归档"}
             </Button>
           </div>
 
           <div className="mt-2 min-h-5 text-xs" aria-live="polite">
             {mutationError && (
               <span className="text-destructive" role="alert">
-                {mutationError.message}
+                {formatUiError(mutationError)}
               </span>
             )}
           </div>
@@ -208,9 +215,9 @@ function KnowledgeTypeLabel({
   knowledgeType: KnowledgeNodeDto["knowledgeType"];
 }) {
   return (
-    <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 font-medium capitalize text-sky-700 dark:text-sky-300">
-      {knowledgeType}
-    </span>
+    <StatusBadge tone="violet">
+      {knowledgeTypeLabel(knowledgeType)}
+    </StatusBadge>
   );
 }
 
@@ -221,17 +228,15 @@ function KnowledgeStatusLabel({
 }) {
   const tone =
     status === "proposed"
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      ? "amber"
       : status === "accepted"
-        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-        : "border-border bg-muted text-muted-foreground";
+        ? "green"
+        : "gray";
 
   return (
-    <span
-      className={`rounded-full border px-2 py-0.5 font-medium capitalize ${tone}`}
-    >
-      {status}
-    </span>
+    <StatusBadge tone={tone}>
+      {knowledgeStatusLabel(status)}
+    </StatusBadge>
   );
 }
 
@@ -254,17 +259,4 @@ function KnowledgeState({
       {children}
     </div>
   );
-}
-
-function formatTimestamp(timestamp: string) {
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return timestamp;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }

@@ -6,9 +6,9 @@ export function SettingsPage() {
   return (
     <section className="mx-auto max-w-3xl">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold">设置</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Configure local application integrations and credentials.
+          管理 AI 服务、Obsidian 仓库和总结提示词。
         </p>
       </div>
 

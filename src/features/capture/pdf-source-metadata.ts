@@ -43,7 +43,7 @@ export function parsePdfSourceMetadata(
 
 export function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) {
-    return "Unknown size";
+    return "大小未知";
   }
 
   if (bytes < 1024) {

@@ -1,7 +1,15 @@
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useDashboardSummary } from "@/features/dashboard/dashboard-queries";
+import {
+  formatDateTime,
+  formatUiError,
+  knowledgeStatusLabel,
+  knowledgeTypeLabel,
+  sourceTypeLabel,
+} from "@/lib/display";
 import type { KnowledgeNodeDto } from "@/types/knowledge";
 import type { SourceDto } from "@/types/source";
 
@@ -15,10 +23,9 @@ export function DashboardPage() {
     <section className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <h1 className="text-2xl font-semibold">总览</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            A local overview of your inbox, knowledge, and Obsidian
-            configuration.
+            快速查看收集箱、知识库和 Obsidian 配置状态。
           </p>
         </div>
         <Button
@@ -27,19 +34,19 @@ export function DashboardPage() {
           disabled={dashboardQuery.isFetching}
           onClick={() => void dashboardQuery.refetch()}
         >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
+          {isRefreshing ? "正在刷新…" : "刷新"}
         </Button>
       </div>
 
       <div className="mt-6">
         {dashboardQuery.isPending && (
-          <DashboardState>Loading dashboard...</DashboardState>
+          <DashboardState>正在加载总览…</DashboardState>
         )}
 
         {dashboardQuery.isError && (
           <DashboardState tone="error">
             <span>
-              Could not load the dashboard: {dashboardQuery.error.message}
+              总览加载失败：{formatUiError(dashboardQuery.error)}
             </span>
             <Button
               size="sm"
@@ -47,7 +54,7 @@ export function DashboardPage() {
               variant="outline"
               onClick={() => void dashboardQuery.refetch()}
             >
-              Retry
+              重试
             </Button>
           </DashboardState>
         )}
@@ -56,40 +63,40 @@ export function DashboardPage() {
           <div className="space-y-6">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <MetricCard
-                label="Inbox"
+                label="收集箱"
                 value={summary.inboxUnprocessedCount}
-                detail="Unprocessed"
+                detail="未处理内容"
               />
               <MetricCard
-                label="Knowledge"
+                label="知识总数"
                 value={summary.knowledgeTotalCount}
-                detail="Total"
+                detail="全部知识"
               />
               <MetricCard
-                label="Proposed"
+                label="待审核"
                 value={summary.proposedKnowledgeCount}
-                detail="Needs review"
+                detail="等待确认"
               />
               <MetricCard
-                label="Accepted"
+                label="已收录"
                 value={summary.acceptedKnowledgeCount}
-                detail="Ready to use"
+                detail="可导出使用"
               />
               <MetricCard
-                label="Archived"
+                label="已归档"
                 value={summary.archivedKnowledgeCount}
-                detail="Stored away"
+                detail="暂不使用"
               />
             </div>
 
             <section className="rounded-lg border bg-background p-4">
               <h2 className="text-sm font-semibold">
-                Obsidian Vault
+                Obsidian 仓库
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 {summary.obsidianVaultConfigured
-                  ? "Configured for the current workspace."
-                  : "Not configured for the current workspace."}
+                  ? "已为当前工作区配置。"
+                  : "当前还没有配置 Obsidian 仓库。"}
               </p>
             </section>
 
@@ -99,16 +106,16 @@ export function DashboardPage() {
             </div>
 
             <section className="rounded-lg border bg-background p-4">
-              <h2 className="text-sm font-semibold">Quick access</h2>
+              <h2 className="text-sm font-semibold">快捷入口</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button asChild>
-                  <Link to="/inbox">Go to Inbox</Link>
+                  <Link to="/inbox">前往收集箱</Link>
                 </Button>
                 <Button asChild variant="outline">
-                  <Link to="/knowledge">Go to Knowledge</Link>
+                  <Link to="/knowledge">前往知识库</Link>
                 </Button>
                 <Button asChild variant="outline">
-                  <Link to="/settings">Go to Settings</Link>
+                  <Link to="/settings">前往设置</Link>
                 </Button>
               </div>
             </section>
@@ -147,15 +154,15 @@ function RecentKnowledgeList({
   return (
     <section className="rounded-lg border bg-background p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold">Recent Knowledge</h2>
+        <h2 className="text-sm font-semibold">最近知识</h2>
         <Button asChild size="sm" variant="ghost">
-          <Link to="/knowledge">View all</Link>
+          <Link to="/knowledge">查看全部</Link>
         </Button>
       </div>
 
       {nodes.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          No knowledge nodes yet.
+          暂无知识内容。
         </p>
       ) : (
         <ul className="mt-3 space-y-3">
@@ -163,10 +170,22 @@ function RecentKnowledgeList({
             <li key={node.id} className="rounded-md border p-3">
               <p className="truncate text-sm font-medium">{node.title}</p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>{formatLabel(node.status)}</span>
-                <span>{formatLabel(node.knowledgeType)}</span>
+                <StatusBadge
+                  tone={
+                    node.status === "accepted"
+                      ? "green"
+                      : node.status === "proposed"
+                        ? "amber"
+                        : "gray"
+                  }
+                >
+                  {knowledgeStatusLabel(node.status)}
+                </StatusBadge>
+                <StatusBadge tone="violet">
+                  {knowledgeTypeLabel(node.knowledgeType)}
+                </StatusBadge>
                 <time dateTime={node.createdAt}>
-                  {formatDate(node.createdAt)}
+                  {formatDateTime(node.createdAt)}
                 </time>
               </div>
             </li>
@@ -185,28 +204,31 @@ function RecentInboxList({
   return (
     <section className="rounded-lg border bg-background p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold">Recent Inbox</h2>
+        <h2 className="text-sm font-semibold">最近收集</h2>
         <Button asChild size="sm" variant="ghost">
-          <Link to="/inbox">View all</Link>
+          <Link to="/inbox">查看全部</Link>
         </Button>
       </div>
 
       {sources.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          No unprocessed sources.
+          暂无未处理内容。
         </p>
       ) : (
         <ul className="mt-3 space-y-3">
           {sources.map((source) => (
             <li key={source.id} className="rounded-md border p-3">
-              <p className="max-h-12 overflow-hidden whitespace-pre-wrap break-words text-sm">
+              <StatusBadge tone="blue">
+                {sourceTypeLabel(source.sourceType)}
+              </StatusBadge>
+              <p className="mt-2 max-h-12 overflow-hidden whitespace-pre-wrap break-words text-sm">
                 {source.rawContent}
               </p>
               <time
                 className="mt-2 block text-xs text-muted-foreground"
                 dateTime={source.capturedAt}
               >
-                {formatDate(source.capturedAt)}
+                {formatDateTime(source.capturedAt)}
               </time>
             </li>
           ))}
@@ -235,21 +257,4 @@ function DashboardState({
       {children}
     </div>
   );
-}
-
-function formatLabel(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }

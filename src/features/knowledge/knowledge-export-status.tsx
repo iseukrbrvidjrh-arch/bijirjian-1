@@ -1,10 +1,16 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   useExportKnowledgeNode,
   useLatestExportRecord,
 } from "@/features/knowledge/knowledge-export-queries";
+import {
+  exportStatusLabel,
+  formatDateTime,
+  formatUiError,
+} from "@/lib/display";
 
 type CopyStatus = "idle" | "copied" | "failed";
 
@@ -43,7 +49,7 @@ export function KnowledgeExportStatus({
   return (
     <section className="mt-4 rounded-md border bg-muted/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h4 className="text-sm font-medium">Obsidian export</h4>
+        <h4 className="text-sm font-medium">导出到 Obsidian</h4>
         <Button
           size="sm"
           type="button"
@@ -51,19 +57,19 @@ export function KnowledgeExportStatus({
           disabled={exportMutation.isPending}
           onClick={exportNode}
         >
-          {exportMutation.isPending ? "Exporting…" : "Export"}
+          {exportMutation.isPending ? "正在导出…" : "导出"}
         </Button>
       </div>
 
       <div className="mt-3 text-xs" aria-live="polite">
         {exportMutation.isSuccess && (
-          <p className="text-emerald-700 dark:text-emerald-300">
-            Export succeeded. Latest export details are up to date.
+          <p className="text-emerald-700">
+            导出成功，最近导出信息已更新。
           </p>
         )}
         {exportMutation.error && (
           <p className="text-destructive" role="alert">
-            Export failed: {exportMutation.error.message}
+            导出失败：{formatUiError(exportMutation.error)}
           </p>
         )}
       </div>
@@ -71,15 +77,15 @@ export function KnowledgeExportStatus({
       <div className="mt-3 border-t pt-3">
         {latestExportQuery.isPending && (
           <p className="text-xs text-muted-foreground">
-            Loading export status…
+            正在加载导出状态…
           </p>
         )}
 
         {latestExportQuery.error && (
           <div className="text-xs text-destructive" role="alert">
             <p>
-              Could not load export status:{" "}
-              {latestExportQuery.error.message}
+              导出状态加载失败：
+              {formatUiError(latestExportQuery.error)}
             </p>
             <Button
               className="mt-2"
@@ -88,7 +94,7 @@ export function KnowledgeExportStatus({
               variant="outline"
               onClick={() => void latestExportQuery.refetch()}
             >
-              Retry
+              重试
             </Button>
           </div>
         )}
@@ -97,34 +103,30 @@ export function KnowledgeExportStatus({
           !latestExportQuery.error &&
           !latestExport && (
             <p className="text-xs text-muted-foreground">
-              Never exported
+              尚未导出
             </p>
           )}
 
         {!latestExportQuery.error && latestExport && (
           <div className="space-y-2 text-xs">
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={
-                  latestExport.status === "succeeded"
-                    ? "font-medium text-emerald-700 dark:text-emerald-300"
-                    : "font-medium text-destructive"
+              <span className="font-medium">最近导出：</span>
+              <StatusBadge
+                tone={
+                  latestExport.status === "succeeded" ? "green" : "red"
                 }
               >
-                Last export:{" "}
-                {latestExport.status === "succeeded"
-                  ? "Succeeded"
-                  : "Failed"}
-              </span>
+                {exportStatusLabel(latestExport.status)}
+              </StatusBadge>
               <time
                 className="text-muted-foreground"
                 dateTime={latestExport.createdAt}
               >
-                {formatTimestamp(latestExport.createdAt)}
+                {formatDateTime(latestExport.createdAt)}
               </time>
               {latestExportQuery.isFetching && (
                 <span className="text-muted-foreground">
-                  Refreshing…
+                  正在刷新…
                 </span>
               )}
             </div>
@@ -132,7 +134,10 @@ export function KnowledgeExportStatus({
             {latestExport.status === "failed" &&
               latestExport.errorMessage && (
                 <p className="text-destructive">
-                  {latestExport.errorMessage}
+                  {formatUiError(
+                    latestExport.errorMessage,
+                    "导出失败，请检查 Obsidian 仓库路径。",
+                  )}
                 </p>
               )}
 
@@ -150,16 +155,16 @@ export function KnowledgeExportStatus({
                       void copyPath(latestExport.exportPath!)
                     }
                   >
-                    Copy path
+                    复制路径
                   </Button>
                   {copyStatus === "copied" && (
-                    <span className="text-emerald-700 dark:text-emerald-300">
-                      Copied
+                    <span className="text-emerald-700">
+                      已复制路径
                     </span>
                   )}
                   {copyStatus === "failed" && (
                     <span className="text-destructive">
-                      Copy failed
+                      复制失败
                     </span>
                   )}
                 </div>
@@ -170,17 +175,4 @@ export function KnowledgeExportStatus({
       </div>
     </section>
   );
-}
-
-function formatTimestamp(timestamp: string) {
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return timestamp;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }

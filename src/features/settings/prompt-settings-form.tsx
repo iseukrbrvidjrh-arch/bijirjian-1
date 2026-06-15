@@ -8,6 +8,7 @@ import {
   usePromptVersions,
   useSetActivePromptVersion,
 } from "@/features/settings/prompt-queries";
+import { formatDateTime, formatUiError } from "@/lib/display";
 
 export function PromptSettingsForm() {
   const promptQuery = useDefaultPrompt();
@@ -27,7 +28,7 @@ export function PromptSettingsForm() {
       const version = await createMutation.mutateAsync(promptContent);
       setPromptContent("");
       setStatusMessage(
-        `Version ${version.version} created. It is not active yet.`,
+        `版本 ${version.version} 已创建，尚未启用。`,
       );
       createMutation.reset();
     } catch {
@@ -42,7 +43,7 @@ export function PromptSettingsForm() {
 
     try {
       await activateMutation.mutateAsync(versionId);
-      setStatusMessage(`Version ${version} is now active.`);
+      setStatusMessage(`版本 ${version} 已设为当前版本。`);
       activateMutation.reset();
     } catch {
       // Mutation state renders the error.
@@ -50,14 +51,14 @@ export function PromptSettingsForm() {
   }
 
   if (promptQuery.isPending || versionsQuery.isPending) {
-    return <PromptState>Loading prompt settings...</PromptState>;
+    return <PromptState>正在加载提示词设置…</PromptState>;
   }
 
   if (promptQuery.isError || versionsQuery.isError) {
     const error = promptQuery.error ?? versionsQuery.error;
     return (
       <PromptState tone="error">
-        Could not load prompt settings: {errorMessage(error)}
+        提示词设置加载失败：{formatUiError(error)}
       </PromptState>
     );
   }
@@ -74,34 +75,37 @@ export function PromptSettingsForm() {
           <FileText className="size-4" />
         </div>
         <div>
-          <h2 className="font-semibold">Prompt Settings</h2>
+          <h2 className="font-semibold">总结提示词</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage immutable versions of the built-in source summary
-            prompt.
+            管理内容总结所使用的提示词版本。历史版本创建后不会被修改。
           </p>
         </div>
       </div>
 
       <div className="mt-6 grid gap-3 rounded-md border bg-muted/30 p-4 sm:grid-cols-2">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Prompt
-          </p>
-          <p className="mt-1 text-sm font-medium">{prompt.name}</p>
-        </div>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Active version
+          <p className="text-xs font-medium tracking-wide text-muted-foreground">
+            提示词
           </p>
           <p className="mt-1 text-sm font-medium">
-            Version {prompt.activeVersion.version}
+            {prompt.promptKey === "source_summary"
+              ? "内容总结"
+              : prompt.name}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground">
+            当前版本
+          </p>
+          <p className="mt-1 text-sm font-medium">
+            版本 {prompt.activeVersion.version}
           </p>
         </div>
       </div>
 
       <form className="mt-5" onSubmit={createVersion}>
         <label className="text-sm font-medium" htmlFor="prompt-content">
-          New prompt version
+          新建提示词版本
         </label>
         <textarea
           id="prompt-content"
@@ -109,7 +113,7 @@ export function PromptSettingsForm() {
           value={promptContent}
           onChange={(event) => setPromptContent(event.target.value)}
           className="mt-2 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          placeholder="Enter the complete content for a new prompt version."
+          placeholder="输入完整的提示词内容…"
         />
         <div className="mt-3 flex justify-end">
           <Button
@@ -117,33 +121,33 @@ export function PromptSettingsForm() {
             disabled={isMutating || promptContent.trim().length === 0}
           >
             {createMutation.isPending
-              ? "Creating..."
-              : "Create new version"}
+              ? "正在创建…"
+              : "创建新版本"}
           </Button>
         </div>
       </form>
 
       <div className="mt-5 min-h-5 text-sm" aria-live="polite">
         {statusMessage && (
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 text-emerald-700">
             <CheckCircle2 className="size-4" />
             {statusMessage}
           </span>
         )}
         {createMutation.isError && (
           <span className="text-destructive" role="alert">
-            {errorMessage(createMutation.error)}
+            {formatUiError(createMutation.error)}
           </span>
         )}
         {activateMutation.isError && (
           <span className="text-destructive" role="alert">
-            {errorMessage(activateMutation.error)}
+            {formatUiError(activateMutation.error)}
           </span>
         )}
       </div>
 
       <div className="mt-5 border-t pt-5">
-        <h3 className="text-sm font-semibold">Version history</h3>
+        <h3 className="text-sm font-semibold">版本历史</h3>
         <div className="mt-3 space-y-3">
           {versions.map((version) => {
             const isActive = version.id === prompt.activeVersionId;
@@ -159,15 +163,15 @@ export function PromptSettingsForm() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">
-                      Version {version.version}
+                      版本 {version.version}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {formatDate(version.createdAt)}
+                      {formatDateTime(version.createdAt)}
                     </p>
                   </div>
                   {isActive ? (
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                      Active
+                      当前使用
                     </span>
                   ) : (
                     <Button
@@ -179,7 +183,7 @@ export function PromptSettingsForm() {
                         setActiveVersion(version.id, version.version)
                       }
                     >
-                      {isActivating ? "Activating..." : "Set active"}
+                      {isActivating ? "正在切换…" : "设为当前版本"}
                     </Button>
                   )}
                 </div>
@@ -214,18 +218,4 @@ function PromptState({
       {children}
     </p>
   );
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

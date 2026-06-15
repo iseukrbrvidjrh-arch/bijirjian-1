@@ -8,6 +8,7 @@ import {
   useSaveAiProviderSettings,
   useTestAiProviderConnection,
 } from "@/features/settings/ai-provider-queries";
+import { formatUiError } from "@/lib/display";
 import type {
   AiProviderModel,
   AiProviderType,
@@ -61,10 +62,10 @@ export function AiProviderSettingsForm() {
     try {
       await saveMutation.mutateAsync(input);
       resetField("apiKey");
-      setSaveMessage("Provider settings saved securely.");
+      setSaveMessage("AI 服务设置已安全保存。");
       saveMutation.reset();
     } catch (error) {
-      setSaveError(errorMessage(error));
+      setSaveError(formatUiError(error));
       saveMutation.reset();
     }
   }
@@ -76,14 +77,14 @@ export function AiProviderSettingsForm() {
   }
 
   if (settingsQuery.isPending) {
-    return <SettingsState>Loading AI provider settings...</SettingsState>;
+    return <SettingsState>正在加载 AI 服务设置…</SettingsState>;
   }
 
   if (settingsQuery.isError) {
     return (
       <SettingsState tone="error">
-        Could not load AI provider settings:{" "}
-        {errorMessage(settingsQuery.error)}
+        AI 服务设置加载失败：
+        {formatUiError(settingsQuery.error)}
       </SettingsState>
     );
   }
@@ -98,10 +99,10 @@ export function AiProviderSettingsForm() {
           <KeyRound className="size-4" />
         </div>
         <div>
-          <h2 className="font-semibold">AI Provider</h2>
+          <h2 className="font-semibold">AI 服务</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure DeepSeek for future AI workflows. Your API key is
-            stored in the macOS Keychain and is never displayed again.
+            配置用于生成总结的 DeepSeek。API Key 只保存在 macOS
+            钥匙串中，保存后不会再次显示。
           </p>
         </div>
       </div>
@@ -112,7 +113,7 @@ export function AiProviderSettingsForm() {
       >
         <div>
           <label className="text-sm font-medium" htmlFor="provider-type">
-            Provider
+            服务商
           </label>
           <select
             id="provider-type"
@@ -125,7 +126,7 @@ export function AiProviderSettingsForm() {
 
         <div>
           <label className="text-sm font-medium" htmlFor="default-model">
-            Default model
+            默认模型
           </label>
           <select
             id="default-model"
@@ -138,7 +139,7 @@ export function AiProviderSettingsForm() {
             <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Used as the default model for future AI workflows.
+            生成 AI 总结时默认使用这个模型。
           </p>
         </div>
 
@@ -148,7 +149,7 @@ export function AiProviderSettingsForm() {
               API Key
             </label>
             <span className="text-xs text-muted-foreground">
-              {hasSavedApiKey ? "Saved in Keychain" : "Not configured"}
+              {hasSavedApiKey ? "已保存到钥匙串" : "尚未配置"}
             </span>
           </div>
           <input
@@ -158,14 +159,14 @@ export function AiProviderSettingsForm() {
             className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             placeholder={
               hasSavedApiKey
-                ? "Leave blank to keep the saved API key"
-                : "Enter your DeepSeek API key"
+                ? "留空可继续使用已保存的 API Key"
+                : "请输入 DeepSeek API Key"
             }
             {...register("apiKey", {
               validate: (value) =>
                 hasSavedApiKey ||
                 value.trim().length > 0 ||
-                "API key is required for the first save.",
+                "首次保存时必须填写 API Key。",
             })}
           />
           {errors.apiKey && (
@@ -178,7 +179,7 @@ export function AiProviderSettingsForm() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <div className="text-sm" aria-live="polite">
             {saveMessage && (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
+              <span className="inline-flex items-center gap-1.5 text-emerald-700">
                 <CheckCircle2 className="size-4" />
                 {saveMessage}
               </span>
@@ -189,14 +190,17 @@ export function AiProviderSettingsForm() {
               </span>
             )}
             {testMutation.isSuccess && (
-              <span className="inline-flex items-center gap-1.5 text-foreground">
+              <span className="inline-flex items-center gap-1.5 text-emerald-700">
                 <CheckCircle2 className="size-4" />
-                {testMutation.data.message}
+              DeepSeek 连接成功。
               </span>
             )}
             {testMutation.isError && (
               <span className="text-destructive" role="alert">
-                {errorMessage(testMutation.error)}
+              {formatUiError(
+                testMutation.error,
+                "连接测试失败，请检查 API Key 和网络。",
+              )}
               </span>
             )}
           </div>
@@ -213,8 +217,8 @@ export function AiProviderSettingsForm() {
               onClick={testConnection}
             >
               {testMutation.isPending
-                ? "Testing..."
-                : "Test connection"}
+                ? "正在测试…"
+                : "测试连接"}
             </Button>
             <Button
               type="submit"
@@ -222,7 +226,7 @@ export function AiProviderSettingsForm() {
                 saveMutation.isPending || testMutation.isPending
               }
             >
-              {saveMutation.isPending ? "Saving..." : "Save settings"}
+              {saveMutation.isPending ? "正在保存…" : "保存设置"}
             </Button>
           </div>
         </div>
@@ -250,8 +254,4 @@ function SettingsState({
       {children}
     </p>
   );
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

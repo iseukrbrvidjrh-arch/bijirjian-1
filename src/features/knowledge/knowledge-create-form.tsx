@@ -2,24 +2,33 @@ import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { useCreateKnowledgeNode } from "@/features/knowledge/knowledge-queries";
+import {
+  formatUiError,
+  knowledgeTypeLabel,
+} from "@/lib/display";
 import type {
   CreateKnowledgeNodeInput,
   KnowledgeType,
 } from "@/types/knowledge";
 
+const KNOWLEDGE_TYPE_VALUES: KnowledgeType[] = [
+  "concept",
+  "tool",
+  "project",
+  "question",
+  "solution",
+  "insight",
+  "resource",
+  "person",
+];
+
 const KNOWLEDGE_TYPES: Array<{
   value: KnowledgeType;
   label: string;
-}> = [
-  { value: "concept", label: "Concept" },
-  { value: "tool", label: "Tool" },
-  { value: "project", label: "Project" },
-  { value: "question", label: "Question" },
-  { value: "solution", label: "Solution" },
-  { value: "insight", label: "Insight" },
-  { value: "resource", label: "Resource" },
-  { value: "person", label: "Person" },
-];
+}> = KNOWLEDGE_TYPE_VALUES.map((value) => ({
+  value,
+  label: knowledgeTypeLabel(value),
+}));
 
 export function KnowledgeCreateForm() {
   const createMutation = useCreateKnowledgeNode();
@@ -55,25 +64,25 @@ export function KnowledgeCreateForm() {
       onSubmit={handleSubmit(createNode)}
     >
       <div>
-        <h2 className="font-semibold">Create knowledge</h2>
+        <h2 className="font-semibold">手动添加知识</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Add a structured knowledge node to the local database.
+          将已经整理好的内容直接保存到本地知识库。
         </p>
       </div>
 
       <div className="mt-5 space-y-4">
         <div>
           <label className="text-sm font-medium" htmlFor="knowledge-title">
-            Title
+            标题
           </label>
           <input
             id="knowledge-title"
             className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            placeholder="Name this knowledge node"
+            placeholder="为这条知识起一个清晰的标题"
             disabled={createMutation.isPending}
             {...register("title", {
               validate: (value) =>
-                value.trim().length > 0 || "Title is required.",
+                value.trim().length > 0 || "请填写标题。",
             })}
           />
           {errors.title && (
@@ -85,7 +94,7 @@ export function KnowledgeCreateForm() {
 
         <div>
           <label className="text-sm font-medium" htmlFor="knowledge-type">
-            Type
+            类型
           </label>
           <select
             id="knowledge-type"
@@ -103,16 +112,16 @@ export function KnowledgeCreateForm() {
 
         <div>
           <label className="text-sm font-medium" htmlFor="knowledge-content">
-            Content
+            内容
           </label>
           <textarea
             id="knowledge-content"
             className="mt-2 min-h-32 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            placeholder="Write the knowledge content..."
+            placeholder="写下完整的知识内容…"
             disabled={createMutation.isPending}
             {...register("content", {
               validate: (value) =>
-                value.trim().length > 0 || "Content is required.",
+                value.trim().length > 0 || "请填写知识内容。",
             })}
           />
           {errors.content && (
@@ -126,17 +135,17 @@ export function KnowledgeCreateForm() {
       <div className="mt-4 flex items-center justify-between gap-4">
         <div className="text-sm" aria-live="polite">
           {createMutation.isSuccess && (
-            <span>Knowledge node created.</span>
+            <span className="text-emerald-700">知识已创建。</span>
           )}
           {createMutation.isError && (
             <span className="text-destructive" role="alert">
-              {createMutation.error.message}
+              {formatUiError(createMutation.error)}
             </span>
           )}
         </div>
 
         <Button type="submit" disabled={createMutation.isPending}>
-          {createMutation.isPending ? "Creating..." : "Create"}
+          {createMutation.isPending ? "正在创建…" : "创建知识"}
         </Button>
       </div>
     </form>

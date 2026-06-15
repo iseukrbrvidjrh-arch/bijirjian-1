@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   formatFileSize,
   parsePdfSourceMetadata,
@@ -17,6 +18,15 @@ import {
   useLatestSourceSummary,
   useSummarizeSource,
 } from "@/features/summary/source-summary-queries";
+import {
+  aiRunStatusLabel,
+  formatDateTime,
+  formatUiError,
+  inboxStatusLabel,
+  providerModelLabel,
+  providerTypeLabel,
+  sourceTypeLabel,
+} from "@/lib/display";
 import type { SourceDto } from "@/types/source";
 
 export function InboxSourceList() {
@@ -39,13 +49,14 @@ export function InboxSourceList() {
       />
 
       {inboxQuery.isPending && (
-        <StatusMessage>Loading inbox...</StatusMessage>
+        <StatusMessage>正在加载收集箱…</StatusMessage>
       )}
 
       {inboxQuery.isError && (
         <StatusMessage tone="error">
           <span>
-            Could not load the inbox: {inboxQuery.error.message}
+            收集箱加载失败：
+            {formatUiError(inboxQuery.error)}
           </span>
           <Button
             size="sm"
@@ -53,7 +64,7 @@ export function InboxSourceList() {
             variant="outline"
             onClick={() => void inboxQuery.refetch()}
           >
-            Retry
+            重试
           </Button>
         </StatusMessage>
       )}
@@ -62,8 +73,8 @@ export function InboxSourceList() {
         <StatusMessage>
           <span>
             {appliedQuery
-              ? `No inbox sources match "${appliedQuery}".`
-              : "Your inbox is empty."}
+              ? `没有找到包含“${appliedQuery}”的内容。`
+              : "收集箱还是空的，可以先添加一条文字或导入 PDF。"}
           </span>
           {appliedQuery && (
             <Button
@@ -72,7 +83,7 @@ export function InboxSourceList() {
               variant="outline"
               onClick={() => updateQuery(undefined)}
             >
-              Clear search
+              清空搜索
             </Button>
           )}
         </StatusMessage>
@@ -82,11 +93,10 @@ export function InboxSourceList() {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-medium text-muted-foreground">
-              Unprocessed sources
+              待处理内容
             </h2>
             <span className="text-xs text-muted-foreground">
-              {inboxQuery.data.length} result
-              {inboxQuery.data.length === 1 ? "" : "s"}
+              共 {inboxQuery.data.length} 条
             </span>
           </div>
           <ul className="space-y-3">
@@ -153,9 +163,12 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border px-2 py-0.5 text-xs font-medium uppercase">
-              {source.sourceType}
-            </span>
+            <StatusBadge tone="blue">
+              {sourceTypeLabel(source.sourceType)}
+            </StatusBadge>
+            <StatusBadge tone="blue">
+              {inboxStatusLabel(source.inboxStatus)}
+            </StatusBadge>
             {pdfMetadata && (
               <span className="break-all text-sm font-medium">
                 {pdfMetadata.originalFileName}
@@ -165,8 +178,7 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
           {pdfMetadata && (
             <p className="mt-1 text-xs text-muted-foreground">
               {formatFileSize(pdfMetadata.fileSize)} ·{" "}
-              {pdfMetadata.extractedTextLength.toLocaleString()} extracted
-              characters
+              提取 {pdfMetadata.extractedTextLength.toLocaleString("zh-CN")} 字
             </p>
           )}
         </div>
@@ -183,12 +195,12 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
           className="text-xs text-muted-foreground"
           dateTime={source.capturedAt}
         >
-          {formatCapturedAt(source.capturedAt)}
+          {formatDateTime(source.capturedAt)}
         </time>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button asChild size="sm" variant="ghost">
-            <Link to={`/sources/${source.id}`}>Open Details</Link>
+            <Link to={`/sources/${source.id}`}>查看详情</Link>
           </Button>
           <Button
             size="sm"
@@ -197,7 +209,7 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
             disabled={isPending}
             onClick={() => void summarize()}
           >
-            {summaryMutation.isPending ? "Summarizing..." : "Summarize"}
+            {summaryMutation.isPending ? "正在生成总结…" : "生成总结"}
           </Button>
           <Button
             size="sm"
@@ -212,8 +224,8 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
             onClick={() => void createKnowledgeDraft()}
           >
             {draftMutation.isPending
-              ? "Creating draft..."
-              : "Create Knowledge Draft"}
+              ? "正在创建草稿…"
+              : "创建知识草稿"}
           </Button>
           <Button
             size="sm"
@@ -226,7 +238,7 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
               processedMutation.mutate(source.id);
             }}
           >
-            Mark processed
+            标记为已处理
           </Button>
           <Button
             size="sm"
@@ -240,20 +252,31 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
               dismissedMutation.mutate(source.id);
             }}
           >
-            Dismiss
+            忽略
           </Button>
         </div>
       </div>
 
       {latestSummary?.status === "succeeded" && latestSummary.summary && (
-        <section className="mt-4 rounded-md border bg-muted/30 p-4">
-          <h3 className="text-sm font-semibold">AI Summary</h3>
+        <section className="mt-4 rounded-lg border border-violet-200 bg-violet-50/70 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">AI 总结</h3>
+            <StatusBadge tone="green">
+              {aiRunStatusLabel(latestSummary.status)}
+            </StatusBadge>
+          </div>
           <p className="mt-2 whitespace-pre-wrap break-words text-sm">
             {latestSummary.summary}
           </p>
           <p className="mt-3 text-xs text-muted-foreground">
-            {latestSummary.providerType} · {latestSummary.model} · Prompt
-            version {latestSummary.promptVersion}
+            {latestSummary.providerType
+              ? providerTypeLabel(latestSummary.providerType)
+              : "AI 服务"}
+            {" · "}
+            {latestSummary.model
+              ? providerModelLabel(latestSummary.model)
+              : "模型未知"}
+            {" · "}提示词版本 {latestSummary.promptVersion}
           </p>
         </section>
       )}
@@ -261,10 +284,13 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
       {latestSummary?.status === "failed" && (
         <section className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-4">
           <h3 className="text-sm font-semibold text-destructive">
-            Latest summary failed
+            最近一次总结失败
           </h3>
           <p className="mt-2 text-sm text-destructive">
-            {latestSummary.errorMessage ?? "The AI summary request failed."}
+            {formatUiError(
+              latestSummary.errorMessage,
+              "AI 总结失败，请稍后重试。",
+            )}
           </p>
         </section>
       )}
@@ -272,37 +298,37 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
       <div className="mt-2 min-h-5 text-xs" aria-live="polite">
         {latestSummaryQuery.isPending && (
           <span className="text-muted-foreground">
-            Loading latest summary...
+            正在加载最近总结…
           </span>
         )}
         {latestSummaryQuery.isError && (
           <span className="text-destructive" role="alert">
-            Could not load the latest summary:{" "}
-            {latestSummaryQuery.error.message}
+            最近总结加载失败：
+            {formatUiError(latestSummaryQuery.error)}
           </span>
         )}
         {summaryMutation.isPending && (
-          <span className="text-muted-foreground">Summarizing...</span>
+          <span className="text-muted-foreground">正在生成总结…</span>
         )}
         {draftMutation.isPending && (
           <span className="text-muted-foreground">
-            Creating draft...
+            正在创建知识草稿…
           </span>
         )}
         {draftMutation.isSuccess && (
-          <span>Knowledge draft created.</span>
+          <span className="text-emerald-700">知识草稿已创建。</span>
         )}
         {processedMutation.isPending && (
           <span className="text-muted-foreground">
-            Marking as processed...
+            正在标记为已处理…
           </span>
         )}
         {dismissedMutation.isPending && (
-          <span className="text-muted-foreground">Dismissing...</span>
+          <span className="text-muted-foreground">正在忽略…</span>
         )}
         {mutationError && (
           <span className="text-destructive" role="alert">
-            {mutationError.message}
+            {formatUiError(mutationError)}
           </span>
         )}
       </div>
@@ -331,19 +357,6 @@ function StatusMessage({
   );
 }
 
-function formatCapturedAt(capturedAt: string) {
-  const date = new Date(capturedAt);
-
-  if (Number.isNaN(date.getTime())) {
-    return capturedAt;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 function textPreview(content: string, limit: number) {
   const characters = Array.from(content);
 
@@ -351,5 +364,5 @@ function textPreview(content: string, limit: number) {
     return content;
   }
 
-  return `${characters.slice(0, limit).join("")}...`;
+  return `${characters.slice(0, limit).join("")}…`;
 }

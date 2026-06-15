@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   formatFileSize,
   parsePdfSourceMetadata,
@@ -13,6 +14,17 @@ import {
 } from "@/features/capture/source-queries";
 import { useCreateKnowledgeDraftFromLatestSummary } from "@/features/knowledge/knowledge-queries";
 import { useSummarizeSource } from "@/features/summary/source-summary-queries";
+import {
+  aiRunStatusLabel,
+  formatDateTime,
+  formatUiError,
+  inboxStatusLabel,
+  knowledgeStatusLabel,
+  knowledgeTypeLabel,
+  providerModelLabel,
+  providerTypeLabel,
+  sourceTypeLabel,
+} from "@/lib/display";
 import type { SourceDto } from "@/types/source";
 import type { LatestSourceSummaryDto } from "@/types/summary";
 
@@ -71,24 +83,26 @@ export function SourceDetailPage() {
   if (!sourceId) {
     return (
       <PageState tone="error">
-        <span>The Source ID is missing.</span>
+        <span>缺少内容 ID，无法打开详情。</span>
         <Button asChild size="sm" variant="outline">
-          <Link to="/inbox">Back to Inbox</Link>
+          <Link to="/inbox">返回收集箱</Link>
         </Button>
       </PageState>
     );
   }
 
   if (detailQuery.isPending) {
-    return <PageState>Loading Source details...</PageState>;
+    return <PageState>正在加载内容详情…</PageState>;
   }
 
   if (detailQuery.isError || !detail || !source) {
     return (
       <PageState tone="error">
         <span>
-          Could not load Source details:{" "}
-          {detailQuery.error?.message ?? "Source not found."}
+          内容详情加载失败：
+          {detailQuery.error
+            ? formatUiError(detailQuery.error)
+            : "没有找到这条内容。"}
         </span>
         <div className="flex gap-2">
           <Button
@@ -97,10 +111,10 @@ export function SourceDetailPage() {
             variant="outline"
             onClick={() => void detailQuery.refetch()}
           >
-            Retry
+            重试
           </Button>
           <Button asChild size="sm" variant="outline">
-            <Link to="/inbox">Back to Inbox</Link>
+            <Link to="/inbox">返回收集箱</Link>
           </Button>
         </div>
       </PageState>
@@ -118,12 +132,26 @@ export function SourceDetailPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button asChild size="sm" variant="ghost">
-            <Link to="/inbox">Back to Inbox</Link>
+            <Link to="/inbox">返回收集箱</Link>
           </Button>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">Source Details</h1>
-            <Badge>{source.sourceType}</Badge>
-            <Badge>{source.inboxStatus}</Badge>
+            <h1 className="text-2xl font-semibold">内容详情</h1>
+            <StatusBadge tone="blue">
+              {sourceTypeLabel(source.sourceType)}
+            </StatusBadge>
+            <StatusBadge
+              tone={
+                source.inboxStatus === "processed"
+                  ? "green"
+                  : source.inboxStatus === "unprocessed"
+                    ? "blue"
+                    : source.inboxStatus === "failed"
+                      ? "red"
+                      : "gray"
+              }
+            >
+              {inboxStatusLabel(source.inboxStatus)}
+            </StatusBadge>
           </div>
           <p className="mt-2 break-all text-xs text-muted-foreground">
             {source.id}
@@ -135,7 +163,7 @@ export function SourceDetailPage() {
           disabled={detailQuery.isFetching}
           onClick={() => void detailQuery.refetch()}
         >
-          {detailQuery.isFetching ? "Refreshing..." : "Refresh"}
+          {detailQuery.isFetching ? "正在刷新…" : "刷新"}
         </Button>
       </header>
 
@@ -157,7 +185,7 @@ export function SourceDetailPage() {
       <SourceMetadata source={source} />
 
       <section className="rounded-lg border bg-background p-4">
-        <h2 className="text-sm font-semibold">Source Content</h2>
+        <h2 className="text-sm font-semibold">原始内容</h2>
         <div className="mt-3 max-h-[32rem] overflow-auto rounded-md border bg-muted/20 p-4">
           <p className="whitespace-pre-wrap break-words text-sm">
             {source.rawContent}
@@ -168,18 +196,32 @@ export function SourceDetailPage() {
       <SummarySection summary={detail.latestSummary} />
 
       <section className="rounded-lg border bg-background p-4">
-        <h2 className="text-sm font-semibold">Related Knowledge</h2>
+        <h2 className="text-sm font-semibold">关联知识</h2>
         {detail.relatedKnowledge ? (
           <div className="mt-3 rounded-md border p-3">
             <p className="font-medium">{detail.relatedKnowledge.title}</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Badge>{detail.relatedKnowledge.knowledgeType}</Badge>
-              <Badge>{detail.relatedKnowledge.status}</Badge>
+              <StatusBadge tone="violet">
+                {knowledgeTypeLabel(
+                  detail.relatedKnowledge.knowledgeType,
+                )}
+              </StatusBadge>
+              <StatusBadge
+                tone={
+                  detail.relatedKnowledge.status === "accepted"
+                    ? "green"
+                    : detail.relatedKnowledge.status === "proposed"
+                      ? "amber"
+                      : "gray"
+                }
+              >
+                {knowledgeStatusLabel(detail.relatedKnowledge.status)}
+              </StatusBadge>
             </div>
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
-            No related Knowledge yet.
+            这条内容还没有关联知识。
           </p>
         )}
       </section>
@@ -218,7 +260,7 @@ function SourceActions({
 }) {
   return (
     <section className="rounded-lg border bg-background p-4">
-      <h2 className="text-sm font-semibold">Actions</h2>
+      <h2 className="text-sm font-semibold">操作</h2>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
@@ -226,7 +268,7 @@ function SourceActions({
           disabled={isPending}
           onClick={() => void onAction("summary")}
         >
-          {summaryPending ? "Summarizing..." : "Summarize"}
+          {summaryPending ? "正在生成总结…" : "生成总结"}
         </Button>
         <Button
           type="button"
@@ -234,14 +276,14 @@ function SourceActions({
           disabled={isPending || !canCreateDraft}
           onClick={() => void onAction("draft")}
         >
-          {draftPending ? "Creating draft..." : "Create Knowledge Draft"}
+          {draftPending ? "正在创建草稿…" : "创建知识草稿"}
         </Button>
         <Button
           type="button"
           disabled={isPending || !canTransition}
           onClick={() => void onAction("processed")}
         >
-          {processedPending ? "Marking processed..." : "Mark processed"}
+          {processedPending ? "正在标记…" : "标记为已处理"}
         </Button>
         <Button
           type="button"
@@ -249,23 +291,23 @@ function SourceActions({
           disabled={isPending || !canTransition}
           onClick={() => void onAction("dismissed")}
         >
-          {dismissedPending ? "Dismissing..." : "Dismiss"}
+          {dismissedPending ? "正在忽略…" : "忽略"}
         </Button>
       </div>
       <div className="mt-3 min-h-5 text-sm" aria-live="polite">
         {hasRelatedKnowledge && (
           <p className="text-muted-foreground">
-            This Source already has related Knowledge.
+            这条内容已经关联知识草稿，不能重复创建。
           </p>
         )}
         {!canTransition && (
           <p className="text-muted-foreground">
-            Source lifecycle is already {source.inboxStatus}.
+            这条内容当前为“{inboxStatusLabel(source.inboxStatus)}”状态。
           </p>
         )}
         {error && (
           <p className="text-destructive" role="alert">
-            {error}
+            {formatUiError(error)}
           </p>
         )}
         {successMessage && <p>{successMessage}</p>}
@@ -282,41 +324,52 @@ function SourceMetadata({ source }: { source: SourceDto }) {
 
   return (
     <section className="rounded-lg border bg-background p-4">
-      <h2 className="text-sm font-semibold">Metadata</h2>
+      <h2 className="text-sm font-semibold">内容信息</h2>
       <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-        <MetadataItem label="Captured" value={formatDate(source.capturedAt)} />
         <MetadataItem
-          label="Processed"
+          label="收集时间"
+          value={formatDateTime(source.capturedAt)}
+        />
+        <MetadataItem
+          label="处理时间"
           value={
-            source.processedAt ? formatDate(source.processedAt) : "Not processed"
+            source.processedAt
+              ? formatDateTime(source.processedAt)
+              : "尚未处理"
           }
         />
-        <MetadataItem label="Created" value={formatDate(source.createdAt)} />
-        <MetadataItem label="Updated" value={formatDate(source.updatedAt)} />
+        <MetadataItem
+          label="创建时间"
+          value={formatDateTime(source.createdAt)}
+        />
+        <MetadataItem
+          label="更新时间"
+          value={formatDateTime(source.updatedAt)}
+        />
         {pdfMetadata && (
           <>
             <MetadataItem
-              label="Original file"
+              label="原始文件"
               value={pdfMetadata.originalFileName}
             />
             <MetadataItem
-              label="File size"
+              label="文件大小"
               value={formatFileSize(pdfMetadata.fileSize)}
             />
             <MetadataItem
-              label="Extracted text"
-              value={`${pdfMetadata.extractedTextLength.toLocaleString()} characters`}
+              label="提取文字"
+              value={`${pdfMetadata.extractedTextLength.toLocaleString("zh-CN")} 字`}
             />
             <MetadataItem
-              label="Captured via"
-              value={pdfMetadata.capturedVia}
+              label="添加方式"
+              value="PDF 导入"
             />
           </>
         )}
       </dl>
       {!pdfMetadata && (
         <p className="mt-3 text-xs text-muted-foreground">
-          No additional structured metadata.
+          这条文本内容没有额外文件信息。
         </p>
       )}
     </section>
@@ -339,18 +392,30 @@ function SummarySection({
 }) {
   return (
     <section className="rounded-lg border bg-background p-4">
-      <h2 className="text-sm font-semibold">Latest AI Run</h2>
+      <h2 className="text-sm font-semibold">最近一次 AI 运行记录</h2>
       {!summary && (
         <p className="mt-3 text-sm text-muted-foreground">
-          This Source has not been summarized.
+          这条内容还没有生成总结。
         </p>
       )}
       {summary && (
         <div className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Badge>{summary.status}</Badge>
-            {summary.providerType && <Badge>{summary.providerType}</Badge>}
-            {summary.model && <Badge>{summary.model}</Badge>}
+            <StatusBadge
+              tone={summary.status === "succeeded" ? "green" : "red"}
+            >
+              {aiRunStatusLabel(summary.status)}
+            </StatusBadge>
+            {summary.providerType && (
+              <StatusBadge tone="violet">
+                {providerTypeLabel(summary.providerType)}
+              </StatusBadge>
+            )}
+            {summary.model && (
+              <StatusBadge tone="blue">
+                {providerModelLabel(summary.model)}
+              </StatusBadge>
+            )}
           </div>
           {summary.summary && (
             <p className="whitespace-pre-wrap break-words text-sm">
@@ -359,38 +424,30 @@ function SummarySection({
           )}
           {summary.errorMessage && (
             <p className="text-sm text-destructive">
-              {summary.errorMessage}
+              {formatUiError(summary.errorMessage)}
             </p>
           )}
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <MetadataItem
-              label="Prompt version"
+              label="提示词版本"
               value={
                 summary.promptVersion === null
-                  ? "Unavailable"
+                  ? "不可用"
                   : String(summary.promptVersion)
               }
             />
             <MetadataItem
-              label="Created"
-              value={formatDate(summary.createdAt)}
+              label="创建时间"
+              value={formatDateTime(summary.createdAt)}
             />
             <MetadataItem
-              label="Completed"
-              value={formatDate(summary.completedAt)}
+              label="完成时间"
+              value={formatDateTime(summary.completedAt)}
             />
           </dl>
         </div>
       )}
     </section>
-  );
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border px-2 py-0.5 text-xs font-medium capitalize">
-      {children}
-    </span>
   );
 }
 
@@ -420,27 +477,14 @@ function actionSuccessMessage(
 ) {
   switch (action) {
     case "summary":
-      return "Summary refreshed.";
+      return "总结已更新。";
     case "draft":
-      return "Knowledge draft created.";
+      return "知识草稿已创建。";
     case "processed":
-      return "Source marked as processed.";
+      return "已标记为已处理。";
     case "dismissed":
-      return "Source dismissed.";
+      return "已忽略这条内容。";
     default:
       return undefined;
   }
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }

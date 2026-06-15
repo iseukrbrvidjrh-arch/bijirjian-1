@@ -43,25 +43,25 @@ export function InboxSearchBar({
             className="text-xs font-medium text-muted-foreground"
             htmlFor="inbox-search"
           >
-            Search inbox
+            搜索收集箱
           </label>
           <input
             id="inbox-search"
             className="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            placeholder="Search source content..."
+            placeholder="搜索内容中的关键词…"
             type="search"
             value={draftQuery}
             onChange={(event) => setDraftQuery(event.target.value)}
           />
         </div>
-        <Button type="submit">Search</Button>
+        <Button type="submit">搜索</Button>
         {(query || draftQuery) && (
           <Button
             type="button"
             variant="outline"
             onClick={clearSearch}
           >
-            Clear search
+            清空搜索
           </Button>
         )}
         <Button
@@ -70,7 +70,7 @@ export function InboxSearchBar({
           disabled={isRefreshing}
           onClick={onRefresh}
         >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
+          {isRefreshing ? "正在刷新…" : "刷新"}
         </Button>
       </form>
     </section>

@@ -6,6 +6,7 @@ import {
   parsePdfSourceMetadata,
 } from "@/features/capture/pdf-source-metadata";
 import { useCapturePdfSource } from "@/features/capture/source-queries";
+import { formatUiError } from "@/lib/display";
 
 export function PdfCaptureForm() {
   const [isSelecting, setIsSelecting] = useState(false);
@@ -36,7 +37,7 @@ export function PdfCaptureForm() {
         return;
       }
       if (Array.isArray(selected)) {
-        setSelectionError("Please select a single PDF file.");
+        setSelectionError("请选择一个 PDF 文件。");
         return;
       }
 
@@ -44,7 +45,7 @@ export function PdfCaptureForm() {
     } catch (error) {
       if (!captureMutation.isError) {
         setSelectionError(
-          error instanceof Error ? error.message : String(error),
+          formatUiError(error, "PDF 导入失败，请重新选择文件。"),
         );
       }
     } finally {
@@ -56,10 +57,10 @@ export function PdfCaptureForm() {
     <section className="rounded-lg border bg-background p-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-medium">Import a PDF</h2>
+          <h2 className="text-sm font-medium">导入 PDF</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Extract text from one local PDF. Scanned documents require OCR
-            and are not supported yet.
+            从本地 PDF 提取文字并加入收集箱。扫描版 PDF 需要 OCR，
+            当前暂不支持。
           </p>
         </div>
         <Button
@@ -69,23 +70,28 @@ export function PdfCaptureForm() {
           onClick={() => void selectAndImportPdf()}
         >
           {isSelecting
-            ? "Selecting PDF..."
+            ? "正在选择 PDF…"
             : captureMutation.isPending
-              ? "Importing PDF..."
-              : "Select PDF / Import PDF"}
+              ? "正在导入 PDF…"
+              : "选择并导入 PDF"}
         </Button>
       </div>
 
       <div className="mt-3 min-h-5 text-sm" aria-live="polite">
         {(selectionError || captureMutation.isError) && (
           <p className="text-destructive" role="alert">
-            {selectionError ?? captureMutation.error?.message}
+            {selectionError ??
+              formatUiError(
+                captureMutation.error,
+                "PDF 导入失败，请确认文件有效且包含可提取文字。",
+              )}
           </p>
         )}
         {captureMutation.isSuccess && (
-          <p>
-            Imported{" "}
-            {importedMetadata?.originalFileName ?? "PDF source"} into Inbox.
+          <p className="text-emerald-700">
+            已将“
+            {importedMetadata?.originalFileName ?? "PDF 文档"}
+            ”加入收集箱。
           </p>
         )}
       </div>

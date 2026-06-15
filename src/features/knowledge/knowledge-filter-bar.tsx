@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  knowledgeStatusLabel,
+  knowledgeTypeLabel,
+} from "@/lib/display";
 import type {
   KnowledgeStatus,
   KnowledgeType,
@@ -10,25 +14,25 @@ const STATUS_OPTIONS: Array<{
   value: KnowledgeStatus | "";
   label: string;
 }> = [
-  { value: "", label: "All" },
-  { value: "proposed", label: "Proposed" },
-  { value: "accepted", label: "Accepted" },
-  { value: "archived", label: "Archived" },
+  { value: "", label: "全部状态" },
+  { value: "proposed", label: knowledgeStatusLabel("proposed") },
+  { value: "accepted", label: knowledgeStatusLabel("accepted") },
+  { value: "archived", label: knowledgeStatusLabel("archived") },
 ];
 
 const TYPE_OPTIONS: Array<{
   value: KnowledgeType | "";
   label: string;
 }> = [
-  { value: "", label: "All" },
-  { value: "concept", label: "Concept" },
-  { value: "tool", label: "Tool" },
-  { value: "project", label: "Project" },
-  { value: "question", label: "Question" },
-  { value: "solution", label: "Solution" },
-  { value: "insight", label: "Insight" },
-  { value: "resource", label: "Resource" },
-  { value: "person", label: "Person" },
+  { value: "", label: "全部类型" },
+  { value: "concept", label: knowledgeTypeLabel("concept") },
+  { value: "tool", label: knowledgeTypeLabel("tool") },
+  { value: "project", label: knowledgeTypeLabel("project") },
+  { value: "question", label: knowledgeTypeLabel("question") },
+  { value: "solution", label: knowledgeTypeLabel("solution") },
+  { value: "insight", label: knowledgeTypeLabel("insight") },
+  { value: "resource", label: knowledgeTypeLabel("resource") },
+  { value: "person", label: knowledgeTypeLabel("person") },
 ];
 
 interface KnowledgeFilterBarProps {
@@ -82,25 +86,25 @@ export function KnowledgeFilterBar({
             className="text-xs font-medium text-muted-foreground"
             htmlFor="knowledge-search"
           >
-            Search
+            搜索知识
           </label>
           <input
             id="knowledge-search"
             className="mt-1.5 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            placeholder="Search title or content..."
+            placeholder="搜索标题或内容…"
             type="search"
             value={draftQuery}
             onChange={(event) => setDraftQuery(event.target.value)}
           />
         </div>
-        <Button type="submit">Search</Button>
+        <Button type="submit">搜索</Button>
         {(query || draftQuery) && (
           <Button
             type="button"
             variant="outline"
             onClick={clearSearch}
           >
-            Clear search
+            清空搜索
           </Button>
         )}
       </form>
@@ -111,7 +115,7 @@ export function KnowledgeFilterBar({
             className="text-xs font-medium text-muted-foreground"
             htmlFor="knowledge-status-filter"
           >
-            Status
+            状态
           </label>
           <select
             id="knowledge-status-filter"
@@ -138,7 +142,7 @@ export function KnowledgeFilterBar({
             className="text-xs font-medium text-muted-foreground"
             htmlFor="knowledge-type-filter"
           >
-            Type
+            类型
           </label>
           <select
             id="knowledge-type-filter"
@@ -166,12 +170,12 @@ export function KnowledgeFilterBar({
           disabled={isRefreshing}
           onClick={onRefresh}
         >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
+          {isRefreshing ? "正在刷新…" : "刷新"}
         </Button>
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground" aria-live="polite">
-        {resultCount} {resultCount === 1 ? "result" : "results"}
+        共 {resultCount} 条结果
       </p>
     </section>
   );

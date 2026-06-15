@@ -44,9 +44,9 @@ export function KnowledgePage() {
   return (
     <section className="mx-auto max-w-4xl">
       <div>
-        <h1 className="text-2xl font-semibold">Knowledge</h1>
+        <h1 className="text-2xl font-semibold">知识库</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Create, review, and browse structured knowledge stored locally.
+          创建、审核和浏览保存在本地的结构化知识。
         </p>
       </div>
 

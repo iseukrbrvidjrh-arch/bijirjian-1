@@ -8,6 +8,35 @@ dist
 dist-ssr
 *.local
 
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local SQLite data
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+
+# Signing credentials and private keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+
+# Local packaging logs
+package-logs/
+tauri-build*.log
+bundle-build*.log
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

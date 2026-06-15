@@ -1,4 +1,4 @@
-import type { AiProviderModel, AiProviderType } from "@/types/ai-provider";
+import type { AiProviderType } from "@/types/ai-provider";
 import type { ExportStatus } from "@/types/export";
 import type {
   KnowledgeStatus,
@@ -48,11 +48,23 @@ const exportStatusLabels: Record<ExportStatus, string> = {
 
 const providerTypeLabels: Record<AiProviderType, string> = {
   deepseek: "DeepSeek",
+  qwen: "Qwen / 通义千问",
+  openai: "OpenAI / GPT",
+  gemini: "Gemini / Google",
 };
 
-const providerModelLabels: Record<AiProviderModel, string> = {
+const providerModelLabels: Record<string, string> = {
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "qwen-plus": "Qwen Plus",
+  "qwen-turbo": "Qwen Turbo",
+  "qwen-max": "Qwen Max",
+  "gpt-4o": "GPT-4o",
+  "gpt-4.1": "GPT-4.1",
+  "gpt-4.1-mini": "GPT-4.1 Mini",
+  "gemini-2.5-flash": "Gemini 2.5 Flash",
+  "gemini-2.5-pro": "Gemini 2.5 Pro",
+  "gemini-2.0-flash": "Gemini 2.0 Flash",
 };
 
 export function sourceTypeLabel(value: SourceType) {
@@ -83,8 +95,16 @@ export function providerTypeLabel(value: AiProviderType) {
   return providerTypeLabels[value];
 }
 
-export function providerModelLabel(value: AiProviderModel) {
-  return providerModelLabels[value];
+export function providerModelLabel(
+  value: string,
+  models?: ReadonlyArray<{ id: string; label: string }>,
+) {
+  const matched = models?.find((model) => model.id === value);
+  if (matched) {
+    return matched.label;
+  }
+
+  return providerModelLabels[value] ?? value;
 }
 
 export function formatDateTime(value: string) {
@@ -123,7 +143,7 @@ export function formatUiError(
     normalized.includes("unauthorized") ||
     normalized.includes("forbidden")
   ) {
-    return "身份验证失败，请检查 DeepSeek API Key。";
+    return "身份验证失败，请检查当前服务商的 API Key。";
   }
 
   if (normalized.includes("429") || normalized.includes("rate limit")) {
@@ -143,7 +163,7 @@ export function formatUiError(
   }
 
   if (normalized.includes("api key")) {
-    return "尚未配置有效的 DeepSeek API Key。";
+    return "尚未配置有效的 AI 服务商 API Key。";
   }
 
   if (

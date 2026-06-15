@@ -2,21 +2,21 @@ use crate::{
     domain::{ModelSource, ProviderModelInfo, ProviderType},
     error::AppError,
     infrastructure::ai::{
-        model_list::{filter_deepseek_models, to_provider_model_infos},
+        model_list::{filter_qwen_models, to_provider_model_infos},
         openai_compatible::OpenAiCompatibleClient,
     },
 };
 
-const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com";
+const QWEN_BASE_URL: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1";
 
-pub struct DeepSeekAdapter {
+pub struct QwenAdapter {
     client: OpenAiCompatibleClient,
 }
 
-impl DeepSeekAdapter {
+impl QwenAdapter {
     pub fn new() -> Result<Self, AppError> {
         Ok(Self {
-            client: OpenAiCompatibleClient::new(DEEPSEEK_BASE_URL, "DeepSeek")?,
+            client: OpenAiCompatibleClient::new(QWEN_BASE_URL, "Qwen")?,
         })
     }
 
@@ -25,14 +25,14 @@ impl DeepSeekAdapter {
     }
 
     pub fn list_models(&self, api_key: &str) -> Result<Vec<ProviderModelInfo>, AppError> {
-        let model_ids = filter_deepseek_models(self.client.fetch_model_ids(api_key)?);
+        let model_ids = filter_qwen_models(self.client.fetch_model_ids(api_key)?);
         if model_ids.is_empty() {
             return Err(AppError::AiProvider(
-                "DeepSeek returned no supported chat models".to_owned(),
+                "Qwen returned no supported chat models".to_owned(),
             ));
         }
         Ok(to_provider_model_infos(
-            ProviderType::DeepSeek,
+            ProviderType::Qwen,
             model_ids,
             ModelSource::Remote,
         ))

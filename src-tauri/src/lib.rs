@@ -22,6 +22,7 @@ pub fn run() {
             commands::ai_provider::get_ai_provider_settings,
             commands::ai_provider::save_ai_provider_settings,
             commands::ai_provider::test_ai_provider_connection,
+            commands::ai_provider::list_ai_provider_models,
             commands::capture::capture_text_source,
             commands::capture::capture_pdf_source,
             commands::dashboard::get_dashboard_summary,

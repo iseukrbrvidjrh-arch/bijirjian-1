@@ -95,8 +95,7 @@ mod tests {
         application::services::{DefaultInboxService, InboxService},
         domain::{
             ports::{AiRunRepository, KnowledgeRepository, SourceRepository, WorkspaceRepository},
-            AiRunStatus, InboxStatus, KnowledgeStatus, KnowledgeType, ProviderModel, ProviderType,
-            SourceType,
+            AiRunStatus, InboxStatus, KnowledgeStatus, KnowledgeType, ProviderType, SourceType,
         },
         error::AppError,
         infrastructure::database::{
@@ -220,7 +219,7 @@ mod tests {
                 &failed_source.id,
                 Some("builtin-source-summary-v1"),
                 Some(ProviderType::DeepSeek),
-                Some(ProviderModel::DeepSeekV4Flash),
+                Some("deepseek-v4-flash"),
                 "Provider unavailable",
             )
             .expect("insert failed AI run");
@@ -443,7 +442,7 @@ mod tests {
                 source_id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 summary,
             )
             .expect("insert successful AI run")

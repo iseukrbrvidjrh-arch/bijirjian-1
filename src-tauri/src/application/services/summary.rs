@@ -5,7 +5,7 @@ use crate::{
             AiRunRepository, CredentialStore, ProviderRouter, ProviderSettingsRepository,
             SourceRepository, WorkspaceRepository,
         },
-        AiRun, ProviderModel, ProviderType,
+        AiRun, ProviderType,
     },
     error::AppError,
 };
@@ -15,7 +15,7 @@ pub struct SourceSummary {
     pub source_id: String,
     pub summary: String,
     pub provider_type: ProviderType,
-    pub model: ProviderModel,
+    pub model: String,
     pub prompt_version_id: String,
     pub prompt_version: i64,
 }
@@ -107,7 +107,7 @@ where
         source_id: &str,
         prompt_version_id: &str,
         provider_type: Option<ProviderType>,
-        model: Option<ProviderModel>,
+        model: Option<&str>,
         error: AppError,
     ) -> Result<T, AppError> {
         match self.ai_run_repository.insert_failure(
@@ -189,7 +189,7 @@ where
                     &source.id,
                     &prompt.active_version.id,
                     Some(settings.provider_type),
-                    Some(settings.default_model),
+                    Some(settings.default_model.as_str()),
                     AppError::Validation(
                         "the configured AI provider does not have a saved API key".to_owned(),
                     ),
@@ -200,7 +200,7 @@ where
                     &source.id,
                     &prompt.active_version.id,
                     Some(settings.provider_type),
-                    Some(settings.default_model),
+                    Some(settings.default_model.as_str()),
                     error,
                 );
             }
@@ -208,7 +208,7 @@ where
         let user_content = wrap_source_content(&source.raw_content);
         let summary = match self.provider_router.generate_text(
             settings.provider_type,
-            settings.default_model,
+            &settings.default_model,
             &api_key,
             &prompt.active_version.prompt_content,
             &user_content,
@@ -219,7 +219,7 @@ where
                     &source.id,
                     &prompt.active_version.id,
                     Some(settings.provider_type),
-                    Some(settings.default_model),
+                    Some(settings.default_model.as_str()),
                     error,
                 );
             }
@@ -229,7 +229,7 @@ where
             &source.id,
             &prompt.active_version.id,
             settings.provider_type,
-            settings.default_model,
+            &settings.default_model,
             &summary,
         )?;
 
@@ -284,7 +284,7 @@ mod tests {
                 AiRunRepository, CredentialStore, PromptRepository, ProviderRouter,
                 ProviderSettingsRepository, SourceRepository, WorkspaceRepository,
             },
-            AiRunStatus, InboxStatus, ProviderModel, ProviderType, SourceType,
+            AiRunStatus, InboxStatus, ProviderType, SourceType,
         },
         error::AppError,
         infrastructure::database::{
@@ -325,7 +325,7 @@ mod tests {
             .set_active_version(&prompt.id, &active_version.id)
             .expect("activate prompt version");
         settings_repository
-            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Pro)
+            .save_provider_settings(ProviderType::DeepSeek, "deepseek-v4-pro".to_owned())
             .expect("save provider settings");
         let credentials = FakeCredentialStore::default();
         credentials
@@ -361,11 +361,11 @@ mod tests {
         assert_eq!(result.source_id, source.id);
         assert_eq!(result.summary, "Generated summary");
         assert_eq!(result.provider_type, ProviderType::DeepSeek);
-        assert_eq!(result.model, ProviderModel::DeepSeekV4Pro);
+        assert_eq!(result.model, "deepseek-v4-pro");
         assert_eq!(result.prompt_version_id, active_version.id);
         assert_eq!(result.prompt_version, active_version.version);
         assert_eq!(request.provider_type, ProviderType::DeepSeek);
-        assert_eq!(request.model, ProviderModel::DeepSeekV4Pro);
+        assert_eq!(request.model, "deepseek-v4-pro");
         assert_eq!(request.api_key, "test-api-key");
         assert_eq!(request.system_prompt, "Use this active system prompt");
         assert_eq!(
@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(ai_run.output_text.as_deref(), Some("Generated summary"));
         assert_eq!(ai_run.prompt_version_id, Some(active_version.id));
         assert_eq!(ai_run.provider_type, Some(ProviderType::DeepSeek));
-        assert_eq!(ai_run.model, Some(ProviderModel::DeepSeekV4Pro));
+        assert_eq!(ai_run.model.as_deref(), Some("deepseek-v4-pro"));
         assert!(!format!("{ai_run:?}").contains("test-api-key"));
 
         let persisted_text = database
@@ -563,7 +563,7 @@ mod tests {
             .is_some_and(|message| message.contains("configure and save")));
 
         settings_repository
-            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash)
+            .save_provider_settings(ProviderType::DeepSeek, "deepseek-v4-flash".to_owned())
             .expect("save provider settings");
         assert!(matches!(
             service.summarize_source(source.id.clone()),
@@ -575,7 +575,7 @@ mod tests {
             .expect("missing key should be recorded");
         assert_eq!(missing_key_run.status, AiRunStatus::Failed);
         assert_eq!(missing_key_run.provider_type, Some(ProviderType::DeepSeek));
-        assert_eq!(missing_key_run.model, Some(ProviderModel::DeepSeekV4Flash));
+        assert_eq!(missing_key_run.model.as_deref(), Some("deepseek-v4-flash"));
         assert!(missing_key_run
             .error_message
             .as_deref()
@@ -592,7 +592,7 @@ mod tests {
         let ai_run_repository = SqliteAiRunRepository::new(&database);
         let source_id = seed_source(&database);
         settings_repository
-            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Pro)
+            .save_provider_settings(ProviderType::DeepSeek, "deepseek-v4-pro".to_owned())
             .expect("save provider settings");
         let prompt_service = DefaultPromptService::new(&prompt_repository);
         let credentials = FakeCredentialStore::default();
@@ -621,7 +621,7 @@ mod tests {
         assert!(matches!(error, AppError::AiProvider(_)));
         assert_eq!(latest.status, AiRunStatus::Failed);
         assert_eq!(latest.provider_type, Some(ProviderType::DeepSeek));
-        assert_eq!(latest.model, Some(ProviderModel::DeepSeekV4Pro));
+        assert_eq!(latest.model.as_deref(), Some("deepseek-v4-pro"));
         assert_eq!(latest.prompt_version, Some(1));
         assert!(latest
             .error_message
@@ -684,7 +684,7 @@ mod tests {
         let settings_repository = SqliteProviderSettingsRepository::new(database);
         let ai_run_repository = SqliteAiRunRepository::new(database);
         settings_repository
-            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash)
+            .save_provider_settings(ProviderType::DeepSeek, "deepseek-v4-flash".to_owned())
             .expect("save provider settings");
         let prompt_service = DefaultPromptService::new(&prompt_repository);
         let credentials = FakeCredentialStore::default();
@@ -775,7 +775,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct GenerationRequest {
         provider_type: ProviderType,
-        model: ProviderModel,
+        model: String,
         api_key: String,
         system_prompt: String,
         user_content: String,
@@ -819,17 +819,29 @@ mod tests {
             Ok(())
         }
 
+        fn list_models(
+            &self,
+            _provider_type: ProviderType,
+            _api_key: &str,
+        ) -> crate::domain::ProviderModelListResult {
+            crate::domain::ProviderModelListResult {
+                models: vec![],
+                used_fallback: true,
+                fallback_reason: None,
+            }
+        }
+
         fn generate_text(
             &self,
             provider_type: ProviderType,
-            model: ProviderModel,
+            model_id: &str,
             api_key: &str,
             system_prompt: &str,
             user_content: &str,
         ) -> Result<String, AppError> {
             *self.request.lock().expect("fake router lock") = Some(GenerationRequest {
                 provider_type,
-                model,
+                model: model_id.to_owned(),
                 api_key: api_key.to_owned(),
                 system_prompt: system_prompt.to_owned(),
                 user_content: user_content.to_owned(),

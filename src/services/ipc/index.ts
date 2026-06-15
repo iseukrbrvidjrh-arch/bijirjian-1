@@ -1,5 +1,6 @@
 export {
   getAiProviderSettings,
+  listAiProviderModels,
   saveAiProviderSettings,
   testAiProviderConnection,
 } from "./ai-provider-client";

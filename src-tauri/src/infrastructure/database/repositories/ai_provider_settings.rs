@@ -4,7 +4,9 @@ use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, types::Type, OptionalExtension, TransactionBehavior};
 
 use crate::{
-    domain::{ports::ProviderSettingsRepository, ProviderModel, ProviderSettings, ProviderType},
+    domain::{
+        ports::ProviderSettingsRepository, validate_model_id, ProviderSettings, ProviderType,
+    },
     error::AppError,
     infrastructure::database::Database,
 };
@@ -31,8 +33,10 @@ impl ProviderSettingsRepository for SqliteProviderSettingsRepository<'_> {
     fn save_provider_settings(
         &self,
         provider_type: ProviderType,
-        default_model: ProviderModel,
+        default_model: String,
     ) -> Result<ProviderSettings, AppError> {
+        let default_model = validate_model_id(&default_model)?;
+
         self.database.with_connection(|connection| {
             let transaction =
                 connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -53,12 +57,7 @@ impl ProviderSettingsRepository for SqliteProviderSettingsRepository<'_> {
                     default_model = excluded.default_model,
                     updated_at = excluded.updated_at
                 ",
-                params![
-                    SETTINGS_ID,
-                    provider_type.as_str(),
-                    default_model.as_str(),
-                    now
-                ],
+                params![SETTINGS_ID, provider_type.as_str(), default_model, now],
             )?;
 
             let settings = find_provider_settings(&transaction)?.ok_or_else(|| {
@@ -91,8 +90,7 @@ fn find_provider_settings(
                 Ok(ProviderSettings {
                     provider_type: ProviderType::try_from(provider_type.as_str())
                         .map_err(|message| invalid_setting_value(0, message))?,
-                    default_model: ProviderModel::try_from(default_model.as_str())
-                        .map_err(|message| invalid_setting_value(1, message))?,
+                    default_model,
                     created_at: row.get(2)?,
                     updated_at: row.get(3)?,
                 })

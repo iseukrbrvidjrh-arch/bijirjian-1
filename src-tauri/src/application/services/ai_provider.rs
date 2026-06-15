@@ -1,7 +1,8 @@
 use crate::{
     domain::{
+        builtin_models,
         ports::{CredentialStore, ProviderRouter, ProviderSettingsRepository},
-        ProviderModel, ProviderType,
+        validate_model_id, ProviderModelListResult, ProviderType,
     },
     error::AppError,
 };
@@ -9,7 +10,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiProviderSettingsSummary {
     pub provider_type: ProviderType,
-    pub default_model: ProviderModel,
+    pub default_model: String,
     pub has_api_key: bool,
     pub updated_at: String,
 }
@@ -26,11 +27,17 @@ pub trait AiProviderService: Send + Sync {
     fn save_settings(
         &self,
         provider_type: ProviderType,
-        default_model: ProviderModel,
+        default_model: String,
         api_key: Option<String>,
     ) -> Result<AiProviderSettingsSummary, AppError>;
 
     fn test_connection(&self) -> Result<ProviderConnectionResult, AppError>;
+
+    fn list_models(
+        &self,
+        provider_type: ProviderType,
+        api_key_override: Option<String>,
+    ) -> Result<ProviderModelListResult, AppError>;
 }
 
 pub struct DefaultAiProviderService<'service, SettingsRepo, Credentials, Router>
@@ -91,14 +98,10 @@ where
     fn save_settings(
         &self,
         provider_type: ProviderType,
-        default_model: ProviderModel,
+        default_model: String,
         api_key: Option<String>,
     ) -> Result<AiProviderSettingsSummary, AppError> {
-        if default_model.provider_type() != provider_type {
-            return Err(AppError::Validation(format!(
-                "model {default_model} is not supported by provider {provider_type}"
-            )));
-        }
+        let default_model = validate_model_id(&default_model)?;
 
         let api_key = api_key
             .as_deref()
@@ -158,11 +161,45 @@ where
             ),
         })
     }
+
+    fn list_models(
+        &self,
+        provider_type: ProviderType,
+        api_key_override: Option<String>,
+    ) -> Result<ProviderModelListResult, AppError> {
+        let api_key = api_key_override
+            .as_deref()
+            .map(str::trim)
+            .filter(|api_key| !api_key.is_empty())
+            .map(|api_key| api_key.to_owned())
+            .or_else(|| {
+                self.credential_store
+                    .get_api_key(provider_type)
+                    .ok()
+                    .flatten()
+                    .filter(|value| !value.trim().is_empty())
+            });
+
+        let Some(api_key) = api_key else {
+            return Ok(ProviderModelListResult {
+                models: builtin_models(provider_type),
+                used_fallback: true,
+                fallback_reason: Some(
+                    "no API key configured for this provider; using built-in model list".to_owned(),
+                ),
+            });
+        };
+
+        Ok(self.provider_router.list_models(provider_type, &api_key))
+    }
 }
 
 fn provider_display_name(provider_type: ProviderType) -> &'static str {
     match provider_type {
         ProviderType::DeepSeek => "DeepSeek",
+        ProviderType::Qwen => "Qwen",
+        ProviderType::OpenAI => "OpenAI",
+        ProviderType::Gemini => "Gemini",
     }
 }
 
@@ -176,7 +213,7 @@ mod tests {
     use crate::{
         domain::{
             ports::{CredentialStore, ProviderRouter, ProviderSettingsRepository},
-            ProviderModel, ProviderType,
+            ProviderModelListResult, ProviderType,
         },
         error::AppError,
         infrastructure::database::{repositories::SqliteProviderSettingsRepository, Database},
@@ -193,13 +230,13 @@ mod tests {
         let saved = service
             .save_settings(
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash".to_owned(),
                 Some("secret-api-key".to_owned()),
             )
             .expect("first provider save should succeed");
 
         assert_eq!(saved.provider_type, ProviderType::DeepSeek);
-        assert_eq!(saved.default_model, ProviderModel::DeepSeekV4Flash);
+        assert_eq!(saved.default_model, "deepseek-v4-flash");
         assert!(saved.has_api_key);
         assert_eq!(
             credentials
@@ -213,7 +250,7 @@ mod tests {
             .expect("read provider settings")
             .expect("provider settings should exist");
         assert_eq!(settings.provider_type, ProviderType::DeepSeek);
-        assert_eq!(settings.default_model, ProviderModel::DeepSeekV4Flash);
+        assert_eq!(settings.default_model, "deepseek-v4-flash");
     }
 
     #[test]
@@ -225,7 +262,7 @@ mod tests {
         let service = DefaultAiProviderService::new(&repository, &credentials, &router);
 
         assert!(matches!(
-            service.save_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash, None),
+            service.save_settings(ProviderType::DeepSeek, "deepseek-v4-flash".to_owned(), None),
             Err(AppError::Validation(_))
         ));
         assert!(repository
@@ -248,13 +285,13 @@ mod tests {
         let saved = service
             .save_settings(
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Pro,
+                "deepseek-v4-pro".to_owned(),
                 Some("   ".to_owned()),
             )
             .expect("empty input should retain existing credential");
 
         assert!(saved.has_api_key);
-        assert_eq!(saved.default_model, ProviderModel::DeepSeekV4Pro);
+        assert_eq!(saved.default_model, "deepseek-v4-pro");
         assert_eq!(
             credentials
                 .get_api_key(ProviderType::DeepSeek)
@@ -275,7 +312,7 @@ mod tests {
         let summary = service
             .save_settings(
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash".to_owned(),
                 Some("sqlite-must-not-contain-this-key".to_owned()),
             )
             .expect("save provider settings");
@@ -330,7 +367,7 @@ mod tests {
         let database = test_database();
         let repository = SqliteProviderSettingsRepository::new(&database);
         repository
-            .save_provider_settings(ProviderType::DeepSeek, ProviderModel::DeepSeekV4Flash)
+            .save_provider_settings(ProviderType::DeepSeek, "deepseek-v4-flash".to_owned())
             .expect("seed provider settings");
         let credentials = FakeCredentialStore::default();
         let router = FakeProviderRouter;
@@ -377,10 +414,22 @@ mod tests {
             Ok(())
         }
 
+        fn list_models(
+            &self,
+            _provider_type: ProviderType,
+            _api_key: &str,
+        ) -> ProviderModelListResult {
+            ProviderModelListResult {
+                models: vec![],
+                used_fallback: true,
+                fallback_reason: None,
+            }
+        }
+
         fn generate_text(
             &self,
             _provider_type: ProviderType,
-            _model: ProviderModel,
+            _model_id: &str,
             _api_key: &str,
             _system_prompt: &str,
             _user_content: &str,

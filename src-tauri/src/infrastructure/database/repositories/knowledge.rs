@@ -509,7 +509,7 @@ mod tests {
     use crate::{
         domain::{
             ports::{AiRunRepository, KnowledgeRepository, WorkspaceRepository},
-            KnowledgeStatus, KnowledgeType, ProviderModel, ProviderType,
+            KnowledgeStatus, KnowledgeType, ProviderType,
         },
         infrastructure::database::{
             repositories::{SqliteAiRunRepository, SqliteWorkspaceRepository},
@@ -601,7 +601,7 @@ mod tests {
                 "detail-source",
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "Newer summary",
             )
             .expect("insert newer AI run");

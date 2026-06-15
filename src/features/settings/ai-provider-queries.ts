@@ -6,9 +6,11 @@ import {
 
 import {
   getAiProviderSettings,
+  listAiProviderModels,
   saveAiProviderSettings,
   testAiProviderConnection,
 } from "@/services/ipc";
+import type { ListAiProviderModelsInput } from "@/types/ai-provider";
 
 export const aiProviderQueryKey = ["settings", "ai-provider"] as const;
 
@@ -33,5 +35,12 @@ export function useSaveAiProviderSettings() {
 export function useTestAiProviderConnection() {
   return useMutation({
     mutationFn: testAiProviderConnection,
+  });
+}
+
+export function useListAiProviderModels() {
+  return useMutation({
+    mutationFn: (input: ListAiProviderModelsInput) =>
+      listAiProviderModels(input),
   });
 }

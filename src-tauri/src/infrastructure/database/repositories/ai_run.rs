@@ -5,7 +5,7 @@ use rusqlite::{params, types::Type, OptionalExtension};
 use uuid::Uuid;
 
 use crate::{
-    domain::{ports::AiRunRepository, AiRun, AiRunStatus, ProviderModel, ProviderType},
+    domain::{ports::AiRunRepository, AiRun, AiRunStatus, ProviderType},
     error::AppError,
     infrastructure::database::Database,
 };
@@ -24,7 +24,7 @@ impl<'database> SqliteAiRunRepository<'database> {
         source_id: &str,
         prompt_version_id: Option<&str>,
         provider_type: Option<ProviderType>,
-        model: Option<ProviderModel>,
+        model: Option<&str>,
         status: AiRunStatus,
         output_text: Option<&str>,
         error_message: Option<&str>,
@@ -34,13 +34,6 @@ impl<'database> SqliteAiRunRepository<'database> {
                 "AI run provider and model must either both be present or both be absent"
                     .to_owned(),
             ));
-        }
-        if let (Some(provider_type), Some(model)) = (provider_type, model) {
-            if model.provider_type() != provider_type {
-                return Err(AppError::Validation(
-                    "AI run model does not belong to its provider".to_owned(),
-                ));
-            }
         }
 
         let value = match status {
@@ -88,7 +81,7 @@ impl<'database> SqliteAiRunRepository<'database> {
                     source_id,
                     prompt_version_id,
                     provider_type.map(ProviderType::as_str),
-                    model.map(ProviderModel::as_str),
+                    model,
                     status.as_str(),
                     output_text,
                     error_message,
@@ -109,7 +102,7 @@ impl AiRunRepository for SqliteAiRunRepository<'_> {
         source_id: &str,
         prompt_version_id: &str,
         provider_type: ProviderType,
-        model: ProviderModel,
+        model: &str,
         output_text: &str,
     ) -> Result<AiRun, AppError> {
         self.insert(
@@ -128,7 +121,7 @@ impl AiRunRepository for SqliteAiRunRepository<'_> {
         source_id: &str,
         prompt_version_id: Option<&str>,
         provider_type: Option<ProviderType>,
-        model: Option<ProviderModel>,
+        model: Option<&str>,
         error_message: &str,
     ) -> Result<AiRun, AppError> {
         self.insert(
@@ -227,13 +220,7 @@ fn map_ai_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AiRun> {
             ProviderType::try_from(value.as_str()).map_err(|message| invalid_enum_value(4, message))
         })
         .transpose()?;
-    let model = row
-        .get::<_, Option<String>>(5)?
-        .map(|value| {
-            ProviderModel::try_from(value.as_str())
-                .map_err(|message| invalid_enum_value(5, message))
-        })
-        .transpose()?;
+    let model = row.get::<_, Option<String>>(5)?;
     let status = row.get::<_, String>(6)?;
 
     Ok(AiRun {
@@ -272,7 +259,7 @@ mod tests {
     use crate::{
         domain::{
             ports::{AiRunRepository, SourceRepository, WorkspaceRepository},
-            AiRunStatus, ProviderModel, ProviderType,
+            AiRunStatus, ProviderType,
         },
         error::AppError,
         infrastructure::database::{
@@ -292,7 +279,7 @@ mod tests {
                 &source_id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "Summary output",
             )
             .expect("insert succeeded run");
@@ -301,7 +288,7 @@ mod tests {
                 &source_id,
                 Some("builtin-source-summary-v1"),
                 Some(ProviderType::DeepSeek),
-                Some(ProviderModel::DeepSeekV4Pro),
+                Some("deepseek-v4-pro"),
                 "Provider failed",
             )
             .expect("insert failed run");
@@ -324,7 +311,7 @@ mod tests {
                 &source_id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "First summary",
             )
             .expect("insert first run");
@@ -333,7 +320,7 @@ mod tests {
                 &source_id,
                 Some("builtin-source-summary-v1"),
                 Some(ProviderType::DeepSeek),
-                Some(ProviderModel::DeepSeekV4Flash),
+                Some("deepseek-v4-flash"),
                 "Latest failure",
             )
             .expect("insert latest run");
@@ -370,7 +357,7 @@ mod tests {
                 &source_id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "Successful summary",
             )
             .expect("insert succeeded run");
@@ -379,7 +366,7 @@ mod tests {
                 &source_id,
                 Some("builtin-source-summary-v1"),
                 Some(ProviderType::DeepSeek),
-                Some(ProviderModel::DeepSeekV4Flash),
+                Some("deepseek-v4-flash"),
                 "Newer failure",
             )
             .expect("insert newer failed run");
@@ -405,7 +392,7 @@ mod tests {
                 &source_id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "   ",
             ),
             Err(AppError::Validation(_))

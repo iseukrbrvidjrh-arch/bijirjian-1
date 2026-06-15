@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AiProviderSettingsDto,
+  ListAiProviderModelsInput,
   ProviderConnectionResultDto,
+  ProviderModelListDto,
   SaveAiProviderSettingsInput,
 } from "@/types/ai-provider";
 
@@ -26,4 +28,14 @@ export function testAiProviderConnection() {
   return invoke<ProviderConnectionResultDto>(
     "test_ai_provider_connection",
   );
+}
+
+export function listAiProviderModels({
+  providerType,
+  apiKey,
+}: ListAiProviderModelsInput) {
+  return invoke<ProviderModelListDto>("list_ai_provider_models", {
+    providerType,
+    apiKey,
+  });
 }

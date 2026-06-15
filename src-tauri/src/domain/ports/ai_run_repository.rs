@@ -1,5 +1,5 @@
 use crate::{
-    domain::{AiRun, ProviderModel, ProviderType},
+    domain::{AiRun, ProviderType},
     error::AppError,
 };
 
@@ -9,7 +9,7 @@ pub trait AiRunRepository: Send + Sync {
         source_id: &str,
         prompt_version_id: &str,
         provider_type: ProviderType,
-        model: ProviderModel,
+        model: &str,
         output_text: &str,
     ) -> Result<AiRun, AppError>;
 
@@ -18,7 +18,7 @@ pub trait AiRunRepository: Send + Sync {
         source_id: &str,
         prompt_version_id: Option<&str>,
         provider_type: Option<ProviderType>,
-        model: Option<ProviderModel>,
+        model: Option<&str>,
         error_message: &str,
     ) -> Result<AiRun, AppError>;
 

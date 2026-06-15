@@ -129,7 +129,7 @@ mod tests {
     use super::{LatestSourceSummaryDto, SourceSummaryDto};
     use crate::{
         application::services::SourceSummary,
-        domain::{AiRun, AiRunStatus, ProviderModel, ProviderType},
+        domain::{AiRun, AiRunStatus, ProviderType},
     };
 
     #[test]
@@ -138,7 +138,7 @@ mod tests {
             source_id: "source-1".to_owned(),
             summary: "Summary text".to_owned(),
             provider_type: ProviderType::DeepSeek,
-            model: ProviderModel::DeepSeekV4Flash,
+            model: "deepseek-v4-flash".to_owned(),
             prompt_version_id: "prompt-version-1".to_owned(),
             prompt_version: 1,
         });
@@ -165,7 +165,7 @@ mod tests {
             prompt_version_id: Some("prompt-version-1".to_owned()),
             prompt_version: Some(1),
             provider_type: Some(ProviderType::DeepSeek),
-            model: Some(ProviderModel::DeepSeekV4Flash),
+            model: Some("deepseek-v4-flash".to_owned()),
             status: AiRunStatus::Succeeded,
             output_text: Some("Persisted summary".to_owned()),
             error_message: None,

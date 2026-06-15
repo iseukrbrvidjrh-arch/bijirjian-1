@@ -56,7 +56,7 @@ mod tests {
         application::services::SourceDetail,
         domain::{
             AiRun, AiRunStatus, InboxStatus, KnowledgeNode, KnowledgeStatus, KnowledgeType,
-            ProviderModel, ProviderType, Source, SourceType,
+            ProviderType, Source, SourceType,
         },
     };
 
@@ -85,7 +85,7 @@ mod tests {
                 prompt_version_id: Some("prompt-version-1".to_owned()),
                 prompt_version: Some(1),
                 provider_type: Some(ProviderType::DeepSeek),
-                model: Some(ProviderModel::DeepSeekV4Flash),
+                model: Some("deepseek-v4-flash".to_owned()),
                 status: AiRunStatus::Succeeded,
                 output_text: Some("Summary".to_owned()),
                 error_message: None,

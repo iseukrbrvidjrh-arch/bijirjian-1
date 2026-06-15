@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::domain::{ProviderModel, ProviderType};
+use crate::domain::ProviderType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AiRunStatus {
@@ -42,7 +42,7 @@ pub struct AiRun {
     pub prompt_version_id: Option<String>,
     pub prompt_version: Option<i64>,
     pub provider_type: Option<ProviderType>,
-    pub model: Option<ProviderModel>,
+    pub model: Option<String>,
     pub status: AiRunStatus,
     pub output_text: Option<String>,
     pub error_message: Option<String>,

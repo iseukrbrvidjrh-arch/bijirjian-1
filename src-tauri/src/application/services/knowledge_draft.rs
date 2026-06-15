@@ -140,7 +140,7 @@ mod tests {
     use crate::{
         domain::{
             ports::{AiRunRepository, SourceRepository, WorkspaceRepository},
-            AiRunStatus, KnowledgeStatus, KnowledgeType, ProviderModel, ProviderType,
+            AiRunStatus, KnowledgeStatus, KnowledgeType, ProviderType,
         },
         error::AppError,
         infrastructure::database::{
@@ -170,7 +170,7 @@ mod tests {
                 &source.id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "\n  First   summary   line  \nSecond line",
             )
             .expect("insert successful AI run");
@@ -179,7 +179,7 @@ mod tests {
                 &source.id,
                 Some("builtin-source-summary-v1"),
                 Some(ProviderType::DeepSeek),
-                Some(ProviderModel::DeepSeekV4Flash),
+                Some("deepseek-v4-flash"),
                 "Newer failure",
             )
             .expect("insert newer failed AI run");
@@ -249,7 +249,7 @@ mod tests {
                 &source.id,
                 "builtin-source-summary-v1",
                 ProviderType::DeepSeek,
-                ProviderModel::DeepSeekV4Flash,
+                "deepseek-v4-flash",
                 "Summary",
             )
             .expect("insert successful AI run");

@@ -1,18 +1,15 @@
-import type {
-  AiProviderModel,
-  AiProviderType,
-} from "@/types/ai-provider";
+import type { AiProviderType } from "@/types/ai-provider";
+
+export type AiRunStatus = "succeeded" | "failed";
 
 export interface SourceSummaryDto {
   sourceId: string;
   summary: string;
   providerType: AiProviderType;
-  model: AiProviderModel;
+  model: string;
   promptVersionId: string;
   promptVersion: number;
 }
-
-export type AiRunStatus = "succeeded" | "failed";
 
 export interface LatestSourceSummaryDto {
   runId: string;
@@ -21,7 +18,7 @@ export interface LatestSourceSummaryDto {
   status: AiRunStatus;
   errorMessage: string | null;
   providerType: AiProviderType | null;
-  model: AiProviderModel | null;
+  model: string | null;
   promptVersionId: string | null;
   promptVersion: number | null;
   createdAt: string;

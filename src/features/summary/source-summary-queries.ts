@@ -8,6 +8,7 @@ import {
   getLatestSourceSummary,
   summarizeSource,
 } from "@/services/ipc";
+import { sourceQueryKeys } from "@/features/capture/source-queries";
 
 export const sourceSummaryQueryKeys = {
   latest: (sourceId: string) =>
@@ -27,9 +28,14 @@ export function useSummarizeSource() {
   return useMutation({
     mutationFn: summarizeSource,
     onSettled: async (_data, _error, sourceId) => {
-      await queryClient.invalidateQueries({
-        queryKey: sourceSummaryQueryKeys.latest(sourceId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sourceSummaryQueryKeys.latest(sourceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.detail(sourceId),
+        }),
+      ]);
     },
   });
 }

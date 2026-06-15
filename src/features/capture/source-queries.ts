@@ -7,6 +7,7 @@ import {
 import {
   capturePdfSource,
   captureTextSource,
+  getSourceDetail,
   listInboxSources,
   markSourceDismissed,
   markSourceProcessed,
@@ -20,6 +21,8 @@ export const sourceQueryKeys = {
   inbox: () => [...sourceQueryKeys.all, "inbox"] as const,
   inboxList: ({ limit, query }: InboxSourceListFilters) =>
     [...sourceQueryKeys.inbox(), { limit, query }] as const,
+  detail: (sourceId: string) =>
+    [...sourceQueryKeys.all, sourceId, "detail"] as const,
 };
 
 export function useInboxSources({
@@ -34,6 +37,14 @@ export function useInboxSources({
   return useQuery({
     queryKey: sourceQueryKeys.inboxList(filters),
     queryFn: () => listInboxSources(filters),
+  });
+}
+
+export function useSourceDetail(sourceId: string, enabled = true) {
+  return useQuery({
+    queryKey: sourceQueryKeys.detail(sourceId),
+    queryFn: () => getSourceDetail(sourceId),
+    enabled,
   });
 }
 
@@ -68,10 +79,15 @@ export function useMarkSourceProcessed() {
 
   return useMutation({
     mutationFn: markSourceProcessed,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: sourceQueryKeys.inbox(),
-      });
+    onSuccess: async (_source, sourceId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.inbox(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.detail(sourceId),
+        }),
+      ]);
     },
   });
 }
@@ -81,10 +97,15 @@ export function useMarkSourceDismissed() {
 
   return useMutation({
     mutationFn: markSourceDismissed,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: sourceQueryKeys.inbox(),
-      });
+    onSuccess: async (_source, sourceId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.inbox(),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.detail(sourceId),
+        }),
+      ]);
     },
   });
 }

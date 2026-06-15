@@ -6,6 +6,12 @@ use crate::{
 pub trait KnowledgeRepository: Send + Sync {
     fn find_node(&self, workspace_id: &str, knowledge_id: &str) -> Result<KnowledgeNode, AppError>;
 
+    fn find_latest_for_source(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Option<KnowledgeNode>, AppError>;
+
     fn insert_manual_node(
         &self,
         workspace_id: &str,

@@ -4,6 +4,7 @@ import type {
   InboxSourceListFilters,
   SourceDto,
 } from "@/types/source";
+import type { SourceDetailDto } from "@/types/source-detail";
 
 export async function captureTextSource(
   rawContent: string,
@@ -15,6 +16,12 @@ export async function capturePdfSource(
   filePath: string,
 ): Promise<SourceDto> {
   return invokeCommand<SourceDto>("capture_pdf_source", { filePath });
+}
+
+export async function getSourceDetail(
+  sourceId: string,
+): Promise<SourceDetailDto> {
+  return invokeCommand<SourceDetailDto>("get_source_detail", { sourceId });
 }
 
 export async function listInboxSources({

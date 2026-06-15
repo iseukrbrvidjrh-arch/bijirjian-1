@@ -121,34 +121,13 @@ impl SourceRepository for SqliteSourceRepository<'_> {
 
     fn find_source(&self, workspace_id: &str, source_id: &str) -> Result<Source, AppError> {
         self.database.with_connection(|connection| {
-            if let Some(source) =
-                find_source_in_connection(connection, workspace_id, source_id, false)?
-            {
-                return Ok(source);
-            }
-
-            let source_state = connection
-                .query_row(
-                    "
-                    SELECT workspace_id, deleted_at
-                    FROM sources
-                    WHERE id = ?1
-                    ",
-                    [source_id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
-                )
-                .optional()?;
-
-            match source_state {
-                Some((source_workspace_id, Some(_))) if source_workspace_id == workspace_id => {
-                    Err(AppError::Conflict(format!(
-                        "source {source_id} is deleted and cannot be summarized"
-                    )))
-                }
-                _ => Err(AppError::NotFound(format!(
-                    "source {source_id} does not exist in the current workspace"
-                ))),
-            }
+            find_source_in_connection(connection, workspace_id, source_id, false)?.ok_or_else(
+                || {
+                    AppError::NotFound(format!(
+                        "source {source_id} does not exist in the current workspace"
+                    ))
+                },
+            )
         })
     }
 

@@ -12,6 +12,7 @@ import {
   listKnowledgeNodes,
 } from "@/services/ipc";
 import type { KnowledgeListFilters } from "@/types/knowledge";
+import { sourceQueryKeys } from "@/features/capture/source-queries";
 
 export const knowledgeQueryKeys = {
   all: ["knowledge"] as const,
@@ -40,10 +41,15 @@ export function useAcceptKnowledgeNode() {
 
   return useMutation({
     mutationFn: acceptKnowledgeNode,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: knowledgeQueryKeys.all,
-      });
+    onSuccess: async (_node, sourceId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: knowledgeQueryKeys.all,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sourceQueryKeys.detail(sourceId),
+        }),
+      ]);
     },
   });
 }

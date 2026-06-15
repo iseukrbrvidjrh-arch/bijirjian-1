@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -186,6 +187,9 @@ function InboxSourceItem({ source }: { source: SourceDto }) {
         </time>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm" variant="ghost">
+            <Link to={`/sources/${source.id}`}>Open Details</Link>
+          </Button>
           <Button
             size="sm"
             type="button"

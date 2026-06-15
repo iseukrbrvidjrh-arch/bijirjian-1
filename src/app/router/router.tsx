@@ -5,6 +5,7 @@ import { DashboardPage } from "@/pages/dashboard/dashboard-page";
 import { InboxPage } from "@/pages/inbox/inbox-page";
 import { KnowledgePage } from "@/pages/knowledge/knowledge-page";
 import { SettingsPage } from "@/pages/settings/settings-page";
+import { SourceDetailPage } from "@/pages/sources/source-detail-page";
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +23,10 @@ export const router = createBrowserRouter([
       {
         path: "inbox",
         element: <InboxPage />,
+      },
+      {
+        path: "sources/:sourceId",
+        element: <SourceDetailPage />,
       },
       {
         path: "knowledge",

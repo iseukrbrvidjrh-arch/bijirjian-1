@@ -9,6 +9,7 @@ mod knowledge_draft;
 mod obsidian_settings;
 mod pdf_capture;
 mod prompt;
+mod source_detail;
 mod summary;
 
 pub use ai_provider::{
@@ -27,4 +28,5 @@ pub use obsidian_settings::{
 };
 pub use pdf_capture::{DefaultPdfCaptureService, PdfCaptureService};
 pub use prompt::{DefaultPromptDetails, DefaultPromptService, PromptService};
+pub use source_detail::{DefaultSourceDetailService, SourceDetail, SourceDetailService};
 pub use summary::{DefaultSummaryService, SourceSummary, SummaryService};

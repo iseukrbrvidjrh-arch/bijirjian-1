@@ -43,7 +43,8 @@ pub fn run() {
             commands::prompt::create_prompt_version,
             commands::prompt::set_active_prompt_version,
             commands::summary::summarize_source,
-            commands::summary::get_latest_source_summary
+            commands::summary::get_latest_source_summary,
+            commands::source_detail::get_source_detail
         ])
         .setup(|app| {
             let database = infrastructure::database::initialize(app.handle())?;

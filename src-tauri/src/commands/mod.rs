@@ -7,4 +7,5 @@ pub(crate) mod inbox;
 pub(crate) mod knowledge;
 pub(crate) mod obsidian_settings;
 pub(crate) mod prompt;
+pub(crate) mod source_detail;
 pub(crate) mod summary;

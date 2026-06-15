@@ -56,6 +56,42 @@ impl KnowledgeRepository for SqliteKnowledgeRepository<'_> {
         })
     }
 
+    fn find_latest_for_source(
+        &self,
+        workspace_id: &str,
+        source_id: &str,
+    ) -> Result<Option<KnowledgeNode>, AppError> {
+        self.database.with_connection(|connection| {
+            connection
+                .query_row(
+                    "
+                    SELECT
+                        node.id,
+                        node.workspace_id,
+                        node.ai_run_id,
+                        node.title,
+                        node.content,
+                        node.knowledge_type,
+                        node.status,
+                        node.created_at,
+                        node.updated_at,
+                        node.archived_at
+                    FROM knowledge_nodes AS node
+                    INNER JOIN ai_runs AS run
+                      ON run.id = node.ai_run_id
+                    WHERE node.workspace_id = ?1
+                      AND run.source_id = ?2
+                    ORDER BY node.created_at DESC, node.rowid DESC
+                    LIMIT 1
+                    ",
+                    params![workspace_id, source_id],
+                    map_knowledge_node,
+                )
+                .optional()
+                .map_err(AppError::from)
+        })
+    }
+
     fn insert_manual_node(
         &self,
         workspace_id: &str,
@@ -472,10 +508,13 @@ mod tests {
     use super::SqliteKnowledgeRepository;
     use crate::{
         domain::{
-            ports::{KnowledgeRepository, WorkspaceRepository},
-            KnowledgeStatus, KnowledgeType,
+            ports::{AiRunRepository, KnowledgeRepository, WorkspaceRepository},
+            KnowledgeStatus, KnowledgeType, ProviderModel, ProviderType,
         },
-        infrastructure::database::{repositories::SqliteWorkspaceRepository, Database},
+        infrastructure::database::{
+            repositories::{SqliteAiRunRepository, SqliteWorkspaceRepository},
+            Database,
+        },
     };
 
     #[test]
@@ -535,6 +574,86 @@ mod tests {
             repository.find_node(&workspace.id, &other_node.id),
             Err(crate::error::AppError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn finds_latest_knowledge_for_a_source_with_workspace_isolation() {
+        let database = test_database();
+        let workspace_repository = SqliteWorkspaceRepository::new(&database);
+        let repository = SqliteKnowledgeRepository::new(&database);
+        let ai_run_repository = SqliteAiRunRepository::new(&database);
+        let workspace = workspace_repository
+            .ensure_default_workspace()
+            .expect("create default workspace");
+        seed_workspace(&database, "other-workspace", "Other");
+        seed_ai_run_with_source(&database, &workspace.id, "detail-source", "detail-run-1");
+        let older = repository
+            .insert_proposed_node(
+                &workspace.id,
+                "detail-run-1",
+                "Older",
+                "Older content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert older related knowledge");
+        let newer_run = ai_run_repository
+            .insert_success(
+                "detail-source",
+                "builtin-source-summary-v1",
+                ProviderType::DeepSeek,
+                ProviderModel::DeepSeekV4Flash,
+                "Newer summary",
+            )
+            .expect("insert newer AI run");
+        let newer = repository
+            .insert_proposed_node(
+                &workspace.id,
+                &newer_run.id,
+                "Newer",
+                "Newer content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert newer related knowledge");
+        seed_ai_run_with_source(
+            &database,
+            "other-workspace",
+            "other-detail-source",
+            "other-detail-run",
+        );
+        repository
+            .insert_proposed_node(
+                "other-workspace",
+                "other-detail-run",
+                "Other",
+                "Other content",
+                KnowledgeType::Insight,
+            )
+            .expect("insert other workspace knowledge");
+        database
+            .with_connection(|connection| {
+                connection.execute(
+                    "UPDATE knowledge_nodes SET created_at = ?1 WHERE id IN (?2, ?3)",
+                    params!["2026-06-15T00:00:00.000Z", older.id, newer.id],
+                )?;
+                Ok(())
+            })
+            .expect("align knowledge timestamps");
+
+        assert_eq!(
+            repository
+                .find_latest_for_source(&workspace.id, "detail-source")
+                .expect("find latest related knowledge")
+                .map(|node| node.id),
+            Some(newer.id)
+        );
+        assert!(repository
+            .find_latest_for_source(&workspace.id, "other-detail-source")
+            .expect("isolate other workspace knowledge")
+            .is_none());
+        assert!(repository
+            .find_latest_for_source(&workspace.id, "missing-source")
+            .expect("return none for missing relation")
+            .is_none());
     }
 
     #[test]

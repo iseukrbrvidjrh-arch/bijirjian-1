@@ -6,6 +6,7 @@ export {
 export {
   capturePdfSource,
   captureTextSource,
+  getSourceDetail,
   listInboxSources,
   markSourceDismissed,
   markSourceProcessed,

@@ -492,7 +492,7 @@ mod tests {
         ));
         assert!(matches!(
             source_repository.find_source(&default_workspace.id, &deleted_source.id),
-            Err(AppError::Conflict(_))
+            Err(AppError::NotFound(_))
         ));
     }
 

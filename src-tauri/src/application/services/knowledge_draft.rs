@@ -306,7 +306,7 @@ mod tests {
         ));
         assert!(matches!(
             service.create_from_latest_summary(deleted_source.id),
-            Err(AppError::Conflict(_))
+            Err(AppError::NotFound(_))
         ));
     }
 
